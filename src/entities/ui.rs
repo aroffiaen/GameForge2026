@@ -15,7 +15,7 @@ pub fn update_health_bar(
     }
 }
 
-pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity) {
+pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity, y_offset: f32) {
     // Fond de la barre (noir/gris)
     let bar_id = commands.spawn((
         HealthBar,
@@ -24,7 +24,7 @@ pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity) {
             custom_size: Some(Vec2::new(32.0, 6.0)),
             ..default()
         },
-        Transform::from_xyz(0.0, 40.0, 10.0), // Au-dessus du mob
+        Transform::from_xyz(0.0, y_offset, 10.0), // Position réglable
     )).id();
 
     // Remplissage (vert)

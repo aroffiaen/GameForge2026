@@ -82,7 +82,7 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
         ))
         .id();
 
-    commands
+    let player_id = commands
         .spawn((
             Player,
             DashConfig::default().build(),
@@ -94,7 +94,10 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             Iframes(Timer::from_seconds(0.0, TimerMode::Once)),
             crate::common::Velocity(Vec2::ZERO),
         ))
-        .add_children(&[legs, arms, hat]);
+        .add_children(&[legs, arms, hat])
+        .id();
+
+    crate::entities::ui::spawn_health_bar(&mut commands, player_id, 70.0);
 }
 
 fn spawn_camera2d(mut commands: Commands) {
