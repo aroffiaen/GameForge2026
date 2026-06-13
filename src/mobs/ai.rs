@@ -31,9 +31,10 @@ pub fn mob_ai(
             
             let diff = position - *other_pos;
             let distance = diff.length();
-            if distance < 40.0 && distance > 0.0 {
-                // plus ils sont proches, plus la force est grande
-                separation += diff.normalize() * (35.0 - distance);
+            if distance < 45.0 && distance > 0.0 {
+                // force exponentielle : plus ils sont proches, plus le rejet est violent
+                let strength = (55.0 - distance).powi(2) / 55.0;
+                separation += diff.normalize() * strength;
             }
         }
 
@@ -42,7 +43,7 @@ pub fn mob_ai(
             direction = direction.normalize();
         }
         
-        let final_move = direction + separation * 0.5; // coefficient de separation
+        let final_move = direction + separation * 0.8; // coefficient augmenté pour éviter de coller
         
         if final_move.length() > 0.0 {
             let velocity = final_move.normalize() * mob.speed * time.delta_secs();
