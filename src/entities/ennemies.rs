@@ -398,7 +398,7 @@ mod tests {
             Player,
             Transform::from_xyz(0.0, 0.0, 0.0),
             Radius(16.0),
-            Health { hp: 100 },
+            Health { hp: 100, max_hp: 100 },
             Iframes(Timer::from_seconds(0.1, TimerMode::Once)),
         )).id();
 

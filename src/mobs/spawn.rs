@@ -13,7 +13,7 @@ pub fn spawn_enemy(
     dmg_mult: f32,
 ) -> Entity {
     let stats = def(kind);
-    let mut entity_cmd = commands.spawn((
+    let entity_id = commands.spawn((
         Sprite {
             color: stats.color,
             custom_size: Some(Vec2::new(stats.radius * 2.0, stats.radius * 2.0)),
@@ -21,29 +21,34 @@ pub fn spawn_enemy(
         },
         Transform::from_translation(pos.extend(0.0)),
         Mob { kind },
-        Health { hp: (stats.hp * hp_mult) as i32 },
+        Health { 
+            hp: (stats.hp * hp_mult) as i32,
+            max_hp: (stats.hp * hp_mult) as i32,
+        },
         Enemy,
         Velocity(Vec2::ZERO),
         ContactDmg(stats.dmg * dmg_mult),
         crate::common::Radius(stats.radius),
         BaseColor(stats.color),
         crate::mobs::components::AiState::Idle,
-    ));
+    )).id();
+    
+    crate::entities::ui::spawn_health_bar(commands, entity_id);
 
     if let AiKind::Ranged { shoot_cd, .. } = stats.ai {
-        entity_cmd.insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));
+        commands.entity(entity_id).insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));
     }
     if let AiKind::Lunge = stats.ai {
         let mut active_timer = Timer::from_seconds(0.3, TimerMode::Once);
         active_timer.tick(std::time::Duration::from_secs(1)); 
-        entity_cmd.insert(LungeState {
+        commands.entity(entity_id).insert(LungeState {
             cd: Timer::from_seconds(1.8, TimerMode::Once),
             active: active_timer,
             dir: Vec2::ZERO,
         });
     }
 
-    entity_cmd.id()
+    entity_id
 }
 
 // Spawn d'une vague standard lors de l'entrée dans une salle de combat

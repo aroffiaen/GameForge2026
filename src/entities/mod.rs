@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 pub mod ennemies;
+pub mod ui;
 
 pub struct EntitiesPlugin;
 
@@ -17,6 +18,7 @@ impl Plugin for EntitiesPlugin {
             ennemies::death_system,
             ennemies::debug_logger_system,
             ennemies::debug_kill_mobs_system,
+            ui::update_health_bar,
         ));
     }
 }

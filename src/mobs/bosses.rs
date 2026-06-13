@@ -38,7 +38,7 @@ pub fn spawn_boss_specialized(
     
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
     
-    let mut e = commands.spawn((
+    let boss_id = commands.spawn((
         Enemy,
         Boss,
         BossAiTag,
@@ -50,15 +50,20 @@ pub fn spawn_boss_specialized(
         BaseColor(color),
         Transform::from_translation(pos.extend(8.5)),
         Velocity(Vec2::ZERO),
-        Health { hp: (hp * hp_mult) as i32 },
+        Health { 
+            hp: (hp * hp_mult) as i32,
+            max_hp: (hp * hp_mult) as i32,
+        },
         Radius(radius * 2.0), // Rayon effectif doublé pour le boss
         ContactDmg(contact),
         crate::mobs::components::AiState::Idle,
-    ));
+    )).id();
+
+    crate::entities::ui::spawn_health_bar(commands, boss_id);
 
     match kind {
         BossKind::Araignee => {
-            e.insert(Araignee {
+            commands.entity(boss_id).insert(Araignee {
                 state: AraigneeState::Chase,
                 timer: Timer::from_seconds(1.6, TimerMode::Once),
                 leap_from: pos,
@@ -66,7 +71,7 @@ pub fn spawn_boss_specialized(
             });
         }
         BossKind::Scorpion => {
-            e.insert(Scorpion {
+            commands.entity(boss_id).insert(Scorpion {
                 state: ScorpionState::Strafe,
                 timer: Timer::from_seconds(1.4, TimerMode::Once),
                 charge_dir: Vec2::X,
@@ -74,7 +79,7 @@ pub fn spawn_boss_specialized(
             });
         }
         BossKind::Gromp => {
-            e.insert(Gromp {
+            commands.entity(boss_id).insert(Gromp {
                 state: GrompState::Chase,
                 timer: Timer::from_seconds(1.2, TimerMode::Once),
                 leap_from: pos,
@@ -82,7 +87,7 @@ pub fn spawn_boss_specialized(
             });
         }
     }
-    e.id()
+    boss_id
 }
 
 // --- ARAIGNÉE ---

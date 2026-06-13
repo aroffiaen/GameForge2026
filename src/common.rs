@@ -96,7 +96,14 @@ pub struct DamageMsg {
 #[derive(Component)]
 pub struct Health {
     pub hp: i32,
+    pub max_hp: i32,
 }
+
+#[derive(Component)]
+pub struct HealthBar;
+
+#[derive(Component)]
+pub struct HealthBarFill;
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum GameState {
