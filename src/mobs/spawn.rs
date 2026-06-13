@@ -33,7 +33,7 @@ pub fn spawn_enemy(
         crate::mobs::components::AiState::Idle,
     )).id();
     
-    crate::entities::ui::spawn_health_bar(commands, entity_id, 40.0);
+    crate::entities::ui::spawn_health_bar(commands, entity_id, 40.0, false);
 
     if let AiKind::Ranged { shoot_cd, .. } = stats.ai {
         commands.entity(entity_id).insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));

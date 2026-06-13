@@ -97,7 +97,7 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
         .add_children(&[legs, arms, hat])
         .id();
 
-    crate::entities::ui::spawn_health_bar(&mut commands, player_id, 70.0);
+    crate::entities::ui::spawn_health_bar(&mut commands, player_id, 70.0, true);
 }
 
 fn spawn_camera2d(mut commands: Commands) {

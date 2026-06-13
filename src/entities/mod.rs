@@ -19,6 +19,7 @@ impl Plugin for EntitiesPlugin {
             ennemies::debug_logger_system,
             ennemies::debug_kill_mobs_system,
             ui::update_health_bar,
+            ui::update_health_bar_visibility,
         ));
     }
 }
