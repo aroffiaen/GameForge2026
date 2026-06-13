@@ -31,7 +31,7 @@ pub fn update_health_bar_visibility(
     }
 }
 
-pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity, y_offset: f32, always_visible: bool) {
+pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity, y_offset: f32, always_visible: bool, optional_name: Option<&str>) {
     // Fond de la barre (noir/gris)
     let bar_id = commands.spawn((
         HealthBar,
@@ -42,22 +42,34 @@ pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity, y_offset
         },
         Transform::from_xyz(0.0, y_offset, 10.0),
         if always_visible { Visibility::Inherited } else { Visibility::Hidden },
-    )).id();
-
-
-    // Remplissage (vert)
-    let fill_id = commands.spawn((
-        HealthBarFill,
-        Sprite {
-            color: Color::srgb(0.2, 0.8, 0.2),
-            custom_size: Some(Vec2::new(30.0, 4.0)),
-            ..default()
-        },
-        Transform::from_xyz(0.0, 0.0, 1.0),
-    )).id();
+    )).with_children(|parent| {
+        // Remplissage (vert)
+        parent.spawn((
+            HealthBarFill,
+            Sprite {
+                color: Color::srgb(0.2, 0.8, 0.2),
+                custom_size: Some(Vec2::new(30.0, 4.0)),
+                ..default()
+            },
+            Transform::from_xyz(0.0, 0.0, 1.0),
+        ));
+        
+        // Nom (Nametag) si fourni
+        if let Some(name) = optional_name {
+            parent.spawn((
+                Text::new(name),
+                TextFont {
+                    font_size: 14.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+                Transform::from_xyz(0.0, 12.0, 2.0), // Un peu plus haut que la barre
+                TextLayout::new(Justify::Center, LineBreak::WordBoundary),
+            ));
+        }
+    }).id();
 
     // Hiérarchie
-    commands.entity(bar_id).add_child(fill_id);
     commands.entity(parent_entity).add_child(bar_id);
 }
 
