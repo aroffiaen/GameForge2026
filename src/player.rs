@@ -8,6 +8,8 @@ const SPRITE_WALK1: &str = "player/walk1.png";
 const SPRITE_WALK2: &str = "player/walk2.png";
 const SPRITE_DASH: &str = "player/dash.png";
 
+use crate::common::{Radius, Health};
+
 pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
@@ -19,6 +21,9 @@ impl Plugin for PlayerPlugin {
 
 #[derive(Component)]
 pub struct Player;
+
+#[derive(Component)]
+pub struct Iframes(pub Timer);
 
 #[derive(Resource)]
 struct PlayerSpeed(f32);
@@ -33,6 +38,9 @@ pub fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         Anchor::CENTER,
         Transform::from_xyz(0.0, 0.0, 0.0),
+        Iframes(Timer::from_seconds(0.0, TimerMode::Once)),
+        Radius(16.0),
+        Health { hp: 100 },
     ));
 }
 

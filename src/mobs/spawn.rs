@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use super::components::{Mob, Health, Boss, WaveManager};
+use super::components::{Mob, Boss, WaveManager};
 use crate::entities::ennemies::{def, EnemyKind};
 use crate::common::*;
 use rand::prelude::*;

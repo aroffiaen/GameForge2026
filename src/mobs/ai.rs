@@ -1,5 +1,6 @@
 use bevy::prelude::*;
-use super::components::{Mob, Health};
+use super::components::Mob;
+use crate::common::{Health};
 use crate::player::Player;
 use crate::entities::ennemies::def;
 
@@ -55,7 +56,6 @@ pub fn mob_ai(
             let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
             separation += diff_player.normalize() * strength * 2.0; // repulsion plus forte
         }
-
 
         // combiner mouvement : vers le joueur + evitement
         if direction.length() > 0.0 {

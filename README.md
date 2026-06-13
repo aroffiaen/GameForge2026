@@ -135,6 +135,17 @@ lore…) vit dans le **[Game Design Document](docs/GDD.md)**.
 - [ ] Méta-progression (déblocages permanents)
 - [ ] Mode final « terrasse » (survie chronométrée)
 
+---
+
+## 🧪 Tests
+
+Pour vérifier le bon fonctionnement des systèmes (notamment les collisions et les dégâts), vous pouvez lancer les tests unitaires :
+
+```bash
+cargo test                     # Lance tous les tests
+cargo test contact_damage      # Lance spécifiquement le test des dégâts par contact
+```
+
 ## ❓ Questions ouvertes
 
 - **Nom définitif** du jeu (actuellement *GameForge2026*, nom de projet).

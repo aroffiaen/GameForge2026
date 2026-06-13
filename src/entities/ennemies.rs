@@ -1,8 +1,10 @@
 use bevy::prelude::*;
+use bevy::prelude::MessageWriter as BevyMessageWriter;
+use bevy::prelude::MessageReader as BevyMessageReader;
 // use rand::prelude::*; // pas utilisé dans ce snippet
 
 use crate::common::*;
-use crate::player::Player;
+use crate::player::{Player, Iframes};
 
 // Définitions
 
@@ -128,16 +130,16 @@ pub fn def(kind: EnemyKind) -> EnemyDef {
 
 pub fn enemy_shoot(
     time: Res<Time>,
-    _commands: Commands,
+    mut commands: Commands,
     player: Query<&Transform, With<Player>>,
-    mut enemies: Query<(&EnemyKind, &Transform, &mut ShootCd), With<Enemy>>,
+    mut enemies: Query<(&EnemyKind, &Transform, &ContactDmg, &mut ShootCd), With<Enemy>>,
 ) {
     let Ok(player_tf) = player.single() else {
         return;
     };
     let player_pos = player_tf.translation.truncate();
     
-    for (kind, tf, mut cd) in &mut enemies {
+    for (kind, tf, contact, mut cd) in &mut enemies {
         cd.0.tick(time.delta());
         let AiKind::Ranged { max, shoot_cd, .. } = def(*kind).ai else {
             continue;
@@ -147,7 +149,7 @@ pub fn enemy_shoot(
             cd.0 = Timer::from_seconds(shoot_cd, TimerMode::Once);
             let dir = (player_pos - pos).normalize_or(Vec2::X);
             
-            // 
+            spawn_enemy_projectile(&mut commands, pos, dir * 250.0, contact.0, def(*kind).color);
             info!("Enemy {:?} shoots at {:?}", kind, dir);
         }
     }
@@ -167,5 +169,195 @@ pub fn poison_tint(
             base.0
         };
         sprite.color = target;
+    }
+}
+
+//  projectile ennemie
+pub fn enemy_projectiles(
+    mut commands: Commands,
+    arena: Res<Arena>,
+    mut dmg: BevyMessageWriter<DamageMsg>,
+    projectiles: Query<(Entity, &Transform, &EnemyProjectile)>,
+    mut player: Query<(Entity, &Transform, &Radius, &mut Iframes), With<Player>>,
+) {
+    let Ok((player_e, player_tf, player_r, mut iframes)) = player.single_mut() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    for (e, tf, proj) in &projectiles {
+        let pos = tf.translation.truncate();
+        if pos.x.abs() > arena.half.x + 30.0 || pos.y.abs() > arena.half.y + 30.0 {
+            commands.entity(e).despawn();
+            continue;
+        }
+        if pos.distance(player_pos) <= player_r.0 + 5.0 {
+            if iframes.0.is_finished() {
+                dmg.write(DamageMsg {
+                    target: player_e,
+                    amount: proj.dmg,
+                    kind: DamageKind::Hit,
+                });
+                iframes.0 = Timer::from_seconds(0.5, TimerMode::Once);
+            }
+            commands.entity(e).despawn();
+        }
+    }
+}
+
+// flaque de poison
+pub fn hazard_puddles(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut dmg: BevyMessageWriter<DamageMsg>,
+    mut puddles: Query<(Entity, &Transform, &mut HazardPuddle, &mut Sprite)>,
+    player: Query<(Entity, &Transform, &Radius), With<Player>>,
+) {
+    let Ok((player_e, player_tf, player_r)) = player.single() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    for (e, tf, mut puddle, mut sprite) in &mut puddles {
+        puddle.life.tick(time.delta());
+        puddle.tick.tick(time.delta());
+        let left = 1.0 - puddle.life.fraction();
+        if left < 0.3 {
+            sprite.color = sprite.color.with_alpha(0.45 * (left / 0.3));
+        }
+        if puddle.life.is_finished() {
+            commands.entity(e).despawn();
+            continue;
+        }
+        if puddle.tick.just_finished()
+            && tf.translation.truncate().distance(player_pos) <= puddle.radius + player_r.0
+        {
+            dmg.write(DamageMsg {
+                target: player_e,
+                amount: puddle.dps * puddle.tick.duration().as_secs_f32(),
+                kind: DamageKind::Poison,
+            });
+        }
+    }
+}
+
+// dégâts par contact (mob touche joueur)
+pub fn contact_damage(
+    mut dmg: BevyMessageWriter<DamageMsg>,
+    query_player: Query<(Entity, &Transform, &Radius, &Iframes), With<Player>>,
+    query_mobs: Query<(&Transform, &ContactDmg), With<Enemy>>,
+) {
+    let Ok((player_e, player_tf, player_r, iframes)) = query_player.single() else {
+        return;
+    };
+
+    if !iframes.0.is_finished() {
+        return;
+    }
+
+    let player_pos = player_tf.translation.truncate();
+
+    for (mob_tf, contact) in query_mobs.iter() {
+        let mob_pos = mob_tf.translation.truncate();
+        if mob_pos.distance(player_pos) < player_r.0 + 10.0 {
+            dmg.write(DamageMsg {
+                target: player_e,
+                amount: contact.0,
+                kind: DamageKind::Hit,
+            });
+            break; 
+        }
+    }
+}
+
+// système qui applique réellement les dégâts
+pub fn handle_damage(
+    mut messages: BevyMessageReader<DamageMsg>,
+    mut query_health: Query<(&mut Health, Option<&mut Iframes>)>,
+) {
+    for msg in messages.read() {
+        if let Ok((mut health, iframes)) = query_health.get_mut(msg.target) {
+            health.hp -= msg.amount as i32;
+            
+            if let Some(mut iframes) = iframes {
+                iframes.0 = Timer::from_seconds(0.5, TimerMode::Once);
+            }
+            info!("Entity {:?} took {} damage! HP left: {}", msg.target, msg.amount, health.hp);
+        }
+    }
+}
+
+// afficher projectile ennemie
+pub fn spawn_enemy_projectile(
+    commands: &mut Commands,
+    pos: Vec2,
+    vel: Vec2,
+    dmg: f32,
+    color: Color,
+) {
+    commands.spawn((
+        EnemyProjectile { dmg },
+        Sprite {
+            color: color.mix(&Color::WHITE, 0.3),
+            custom_size: Some(Vec2::splat(7.0)),
+            ..default()
+        },
+        Transform::from_translation(pos.extend(9.0)),
+        Velocity(vel),
+        Lifetime::secs(3.0),
+    ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::player::Player;
+    use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn test_contact_damage_and_hp_loss() {
+        let mut app = App::new();
+        
+        // 1. Setup standard
+        app.add_plugins(MinimalPlugins);
+        app.add_message::<DamageMsg>();
+        app.add_systems(Update, (contact_damage, handle_damage).chain());
+        
+        // 2. Spawn Joueur (100 HP)
+        let player_id = app.world_mut().spawn((
+            Player,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            Radius(16.0),
+            Health { hp: 100 },
+            Iframes(Timer::from_seconds(0.1, TimerMode::Once)),
+        )).id();
+
+        // On s'assure que le timer de départ est fini
+        {
+            let mut player_iframes = app.world_mut().get_mut::<Iframes>(player_id).unwrap();
+            player_iframes.0.tick(std::time::Duration::from_millis(200));
+        }
+
+        // 3. Spawn Ennemi sur le joueur
+        app.world_mut().spawn((
+            Enemy,
+            ContactDmg(5.0),
+            Transform::from_xyz(5.0, 0.0, 0.0),
+        ));
+
+        // 4. Premier impact
+        app.update();
+
+        // 5. Vérifier HP (doit être 95)
+        let health = app.world().get::<Health>(player_id).unwrap();
+        assert_eq!(health.hp, 95);
+
+        // 6. Vérifier Iframes (doit être actif)
+        let iframes = app.world().get::<Iframes>(player_id).unwrap();
+        assert!(!iframes.0.is_finished());
+
+        // 7. Deuxième impact (pendant Iframes)
+        app.update();
+        
+        let health_after = app.world().get::<Health>(player_id).unwrap();
+        assert_eq!(health_after.hp, 95, "Le joueur ne doit pas perdre de vie pendant les Iframes");
     }
 }

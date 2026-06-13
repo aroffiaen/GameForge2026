@@ -7,11 +7,6 @@ pub struct Mob {
 }
 
 #[derive(Component)]
-pub struct Health {
-    pub hp: i32, // entier en 32bits
-}
-
-#[derive(Component)]
 pub struct Boss;
 
 #[derive(Resource)]
