@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 use crate::common::{Health, HealthBar, HealthBarFill};
+use crate::common::GameState;
+use crate::player::Player;
 
 pub fn update_health_bar(
     query_health: Query<&Health, Changed<Health>>,
@@ -58,3 +60,93 @@ pub fn spawn_health_bar(commands: &mut Commands, parent_entity: Entity, y_offset
     commands.entity(bar_id).add_child(fill_id);
     commands.entity(parent_entity).add_child(bar_id);
 }
+
+
+// Tag pour retrouver l'UI du Game Over facilement
+#[derive(Component)]
+pub struct GameOverScreen;
+
+// afficher ui : se lance UNIQUEMENT quand on entre dans l'état GameOver
+pub fn spawn_game_over_ui(mut commands: Commands) {
+    commands.spawn((
+        GameOverScreen,
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(20.0), // Espace entre les textes
+            ..default()
+        },
+        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.85)), // Fond noir plus opaque
+    )).with_children(|parent| {
+        // Titre Principal
+        parent.spawn((
+            Text::new("GAME OVER"),
+            TextFont {
+                font_size: 80.0,
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 0.1, 0.1)), // Rouge vif
+            TextLayout::new(Justify::Center, LineBreak::WordBoundary),
+        ));
+
+        // Sous-titre / Instruction
+        parent.spawn((
+            Text::new("Le jardin a eu raison de vous..."),
+            TextFont {
+                font_size: 30.0,
+                ..default()
+            },
+            TextColor(Color::srgb(0.8, 0.8, 0.8)), // Gris clair
+            TextLayout::new(Justify::Center, LineBreak::WordBoundary),
+        ));
+
+        // Bouton de restart
+        parent.spawn((
+            Text::new("Appuyez sur [ R ] pour recommencer"),
+            TextFont {
+                font_size: 24.0,
+                ..default()
+            },
+            TextColor(Color::srgb(1.0, 1.0, 1.0)), // Blanc
+            TextLayout::new(Justify::Center, LineBreak::WordBoundary),
+        ));
+    });
+}
+
+            // redemarrer jeu : ecoute la touche R et reinitialise tout
+            pub fn restart_game(
+            keyboard_input: Res<ButtonInput<KeyCode>>,
+            mut next_state: ResMut<NextState<GameState>>,
+            mut player_query: Query<(&mut Health, &mut Transform), With<Player>>,
+            mobs_query: Query<Entity, With<crate::common::Enemy>>,
+            ui_query: Query<Entity, With<GameOverScreen>>,
+            mut commands: Commands,
+            ) {
+            if keyboard_input.just_pressed(KeyCode::KeyR) {
+            
+            // restaurer le joueur
+            if let Ok((mut health, mut transform)) = player_query.single_mut() {
+
+            health.hp = health.max_hp;
+            transform.translation = Vec3::ZERO; // Le ramener au centre
+        }
+
+        // nettoyer la carte des ennemis
+        for mob in mobs_query.iter() {
+            commands.entity(mob).despawn();
+        }
+
+        // supprimer l'écran de Game Over
+        for ui in ui_query.iter() {
+            commands.entity(ui).despawn();
+        }
+
+        // 4. Relancer le jeu
+        next_state.set(GameState::InGame);
+        info!("🔄 Jeu redémarré !");
+        }
+        }
+

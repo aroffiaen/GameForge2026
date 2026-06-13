@@ -5,6 +5,7 @@ use crate::{
     player::dash::{DashConfig, DashPlugin},
     player::weapons::{WeaponsPlugin, RakeWeapon},
     speed::Speed,
+    common::GameState,
 };
 use bevy::{prelude::*, sprite::Anchor, window::PrimaryWindow};
 
@@ -26,10 +27,12 @@ impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((DashPlugin, WeaponsPlugin));
         app.add_systems(Startup, (spawn_camera2d, spawn_player));
+        
+        // Les systèmes de jeu ne tournent que si on est en train de jouer
         app.add_systems(Update, (
             update_hat, 
             (rotation, movements, player_attack).chain()
-        ));
+        ).run_if(in_state(GameState::InGame)));
     }
 }
 
