@@ -1,7 +1,9 @@
 mod dash;
+mod weapons;
 
 use crate::{
     player::dash::{DashConfig, DashPlugin},
+    player::weapons::{WeaponsPlugin, RakeWeapon},
     speed::Speed,
 };
 use bevy::{prelude::*, sprite::Anchor, window::PrimaryWindow};
@@ -22,7 +24,7 @@ pub struct PlayerPlugin;
 
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(DashPlugin);
+        app.add_plugins((DashPlugin, WeaponsPlugin));
         app.add_systems(Startup, (spawn_camera2d, spawn_player));
         app.add_systems(Update, (update_hat, (rotation, movements).chain()));
     }
@@ -86,6 +88,7 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
         .spawn((
             Player,
             DashConfig::default().build(),
+            RakeWeapon::default(),
             Speed::new(PLAYER_SPEED),
             Anchor::CENTER,
             Transform::from_xyz(0.0, 0.0, 0.0),

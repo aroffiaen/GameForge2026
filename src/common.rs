@@ -71,6 +71,12 @@ pub struct Arena {
 pub struct Untouchable;
 
 #[derive(Component)]
+pub struct Pulled {
+    pub force: f32,
+    pub timer: Timer,
+}
+
+#[derive(Component)]
 pub struct Radius(pub f32);
 
 #[derive(Component)]

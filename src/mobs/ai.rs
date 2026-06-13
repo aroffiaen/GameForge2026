@@ -2,11 +2,11 @@ use bevy::prelude::*;
 use super::components::Mob;
 use crate::player::Player;
 use crate::entities::ennemies::def;
-use crate::common::{AiKind, Velocity, LungeState, Slowed};
+use crate::common::{AiKind, Velocity, LungeState, Slowed, Pulled};
 
 pub fn mob_ai(
     time: Res<Time>, 
-    mut query_mobs: Query<(Entity, &Mob, &Transform, &mut Velocity, Option<&mut LungeState>, Has<Slowed>), Without<Player>>,
+    mut query_mobs: Query<(Entity, &Mob, &Transform, &mut Velocity, Option<&mut LungeState>, Has<Slowed>, Option<&Pulled>), Without<Player>>,
     query_player: Query<&Transform, With<Player>>,
 ) {
     let Ok(player_tf) = query_player.single() else {
@@ -18,18 +18,24 @@ pub fn mob_ai(
     // Calculer les evitements
     let mob_data: Vec<(Entity, Vec2, f32)> = query_mobs
         .iter()
-        .map(|(entity, mob, transform, _, _, _)| {
+        .map(|(entity, mob, transform, _, _, _, _)| {
             (entity, transform.translation.truncate(), def(mob.kind).radius)
         })
         .collect();
 
-    for (entity, mob, tf, mut vel, lunge, slowed) in &mut query_mobs {
+    for (entity, mob, tf, mut vel, lunge, slowed, pulled) in &mut query_mobs {
         let stats = def(mob.kind);
         let pos = tf.translation.truncate();
         let to_player = player_pos - pos;
         let dist = to_player.length();
         let dir = to_player.normalize_or_zero();
-        
+
+        // Si l'ennemi est attiré par le râteau, on écrase l'IA
+        if let Some(pulled) = pulled {
+            vel.0 = (player_pos - pos).normalize_or_zero() * pulled.force;
+            continue;
+        }
+
         let mut max_speed = stats.speed;
         if slowed {
             max_speed *= 0.45;
