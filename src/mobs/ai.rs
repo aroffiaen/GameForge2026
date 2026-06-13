@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use super::components::{Mob, Health};
 use crate::player::Player;
+use crate::entities::ennemies::def;
 
 pub fn mob_ai(
     time: Res<Time>, 
@@ -9,18 +10,22 @@ pub fn mob_ai(
 ) {
     // position cible : joueur si present, sinon centre (0,0)
     let mut target_pos = Vec3::ZERO;
+
     for player_transform in query_player.iter() {
         target_pos = player_transform.translation;
     }
 
-    // collecter positions : pour calculer les evitements
-    let mob_positions: Vec<(Entity, Vec3)> = query_mobs
+    // calculer les evitements
+    let mob_data: Vec<(Entity, Vec3, f32)> = query_mobs
         .iter()
-        .map(|(entity, _, transform)| (entity, transform.translation))
+        .map(|(entity, mob, transform)| {
+            (entity, transform.translation, def(mob.kind).radius)
+        })
         .collect();
 
     // iterer mobs : boucle sur chaque ennemi mobile
     for (entity, mob, mut transform) in query_mobs.iter_mut() {
+        let stats = def(mob.kind);
         let position = transform.translation;
         let mut direction = target_pos - position;
 
@@ -28,14 +33,15 @@ pub fn mob_ai(
         let mut separation = Vec3::ZERO;
 
         // eviter les autres mobs
-        for (other_entity, other_pos) in &mob_positions {
-            if entity == *other_entity { continue; }
+        for (_other_entity, other_pos, _other_radius) in &mob_data {
+            if entity == *_other_entity { continue; }
 
             let diff = position - *other_pos;
             let distance = diff.length();
+            let safe_dist = 50.0; //
 
-            if distance < 45.0 && distance > 0.0 {
-                let strength = (45.0 - distance).powi(2) / 45.0;
+            if distance < safe_dist && distance > 0.0 {
+                let strength = (safe_dist - distance).powi(2) / safe_dist;
                 separation += diff.normalize() * strength;
             }
         }
@@ -43,11 +49,13 @@ pub fn mob_ai(
         // eviter le joueur (collision physique)
         let diff_player = position - target_pos;
         let dist_player = diff_player.length();
+        let player_safe_dist = 50.0; //
 
-        if dist_player < 45.0 && dist_player > 0.0 {
-            let strength = (45.0 - dist_player).powi(2) / 45.0;
+        if dist_player < player_safe_dist && dist_player > 0.0 {
+            let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
             separation += diff_player.normalize() * strength * 2.0; // repulsion plus forte
         }
+
 
         // combiner mouvement : vers le joueur + evitement
         if direction.length() > 0.0 {
@@ -55,9 +63,9 @@ pub fn mob_ai(
         }
 
         let final_move = direction + separation * 0.8;
-        
+
         if final_move.length() > 0.0 {
-            let velocity = final_move.normalize() * mob.speed * time.delta_secs();
+            let velocity = final_move.normalize() * stats.speed * time.delta_secs();
             transform.translation += velocity;
         }
     }

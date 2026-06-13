@@ -1,9 +1,9 @@
 use bevy::prelude::*;
+use crate::entities::ennemies::EnemyKind;
 
 #[derive(Component)]
-#[allow(dead_code)]
 pub struct Mob {
-    pub speed: f32,
+    pub kind: EnemyKind,
 }
 
 #[derive(Component)]
