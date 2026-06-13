@@ -1,5 +1,4 @@
 use bevy::prelude::*;
-<<<<<<< HEAD
 use super::components::{Mob, Health, Boss, WaveManager};
 use rand::prelude::*;
 
@@ -23,7 +22,7 @@ pub fn spawn_wave_system(
         let wave_speed = SPEED + (wave_manager.current_wave as f32 - 1.0) * 20.0;
         
         // spawn sbires : commun a toutes les vagues
-        let spawn_count = rng.random_range(5..10);
+        let spawn_count = rng.random_range(5..15);
         for _ in 0..spawn_count {
             let angle = rng.random_range(0.0..std::f32::consts::TAU);
             let distance = rng.random_range(300.0..800.0);
@@ -68,47 +67,4 @@ pub fn spawn_wave_system(
         // passer a la vague suivante
         wave_manager.current_wave += 1;
     }
-=======
-use super::components::{Mob, Health};
-use rand::prelude::*;
-
-const SPEED: f32 = 50.0;
-const HP: i32 = 1;
-
-pub fn spawn_mobs(mut commands: Commands) {
-<<<<<<< HEAD
-    // Spawn un mob avec Transform
-    commands.spawn((
-        Mob { speed: SPEED },
-        Transform::from_xyz(0.0, 0.0, 0.0),
-        Health { hp: HP },
-    ));
->>>>>>> 6467fad (🏗️ feat: update mob AI and health system; replace Position with Transform)
-=======
-    let mut rng = rand::rng();
-
-    // nombre aleatoire : de 5 a 15 mobs au depart
-    let mob_count = rng.random_range(5..10);
-
-    for _ in 0..mob_count {
-        // position peripherique : angle aleatoire et distance entre 300 et 800
-        let angle = rng.random_range(0.0..std::f32::consts::TAU);
-        let distance = rng.random_range(300.0..800.0);
-
-        let x = angle.cos() * distance;
-        let y = angle.sin() * distance;
-
-        // faire apparaitre : mob avec couleur rouge
-        commands.spawn((
-            Sprite {
-                color: Color::srgb(1.0, 0.0, 0.0), // Rouge
-                custom_size: Some(Vec2::new(32.0, 32.0)),
-                ..Default::default()
-            },
-            Transform::from_xyz(x, y, 0.0),
-            Mob { speed: SPEED },
-            Health { hp: HP },
-        ));
-    }
->>>>>>> ebf8783 (✨ feat : ameliorer spawn aleatoire et deplacement mobs)
 }
