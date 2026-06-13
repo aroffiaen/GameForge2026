@@ -360,12 +360,12 @@ mod tests {
     fn test_contact_damage_and_hp_loss() {
         let mut app = App::new();
         
-        // 1. Setup standard
+        // preparer setup : minimal pour eviter les overheads
         app.add_plugins(MinimalPlugins);
         app.add_message::<DamageMsg>();
         app.add_systems(Update, (contact_damage, handle_damage).chain());
         
-        // 2. Spawn Joueur (100 HP)
+        // spawn joueur : 100 pv
         let player_id = app.world_mut().spawn((
             Player,
             Transform::from_xyz(0.0, 0.0, 0.0),
@@ -374,31 +374,31 @@ mod tests {
             Iframes(Timer::from_seconds(0.1, TimerMode::Once)),
         )).id();
 
-        // On s'assure que le timer de départ est fini
+        // valider timer : s'assurer qu'il est fini pour le premier impact
         {
             let mut player_iframes = app.world_mut().get_mut::<Iframes>(player_id).unwrap();
             player_iframes.0.tick(std::time::Duration::from_millis(200));
         }
 
-        // 3. Spawn Ennemi sur le joueur
+        // spawn ennemi : sur la meme position que le joueur
         app.world_mut().spawn((
             Enemy,
             ContactDmg(5.0),
             Transform::from_xyz(5.0, 0.0, 0.0),
         ));
 
-        // 4. Premier impact
+        // executer impact : premiere collision
         app.update();
 
-        // 5. Vérifier HP (doit être 95)
+        // verifier hp : doit avoir perdu 5 pv
         let health = app.world().get::<Health>(player_id).unwrap();
         assert_eq!(health.hp, 95);
 
-        // 6. Vérifier Iframes (doit être actif)
+        // verifier iframes : doit etre invulnerable
         let iframes = app.world().get::<Iframes>(player_id).unwrap();
         assert!(!iframes.0.is_finished());
 
-        // 7. Deuxième impact (pendant Iframes)
+        // executer deuxieme impact : aucun degat attendu
         app.update();
         
         let health_after = app.world().get::<Health>(player_id).unwrap();

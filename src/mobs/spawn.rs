@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use super::components::{Mob, Boss, WaveManager};
+use super::components::{Mob, Boss, WaveManager, Biome};
 use crate::entities::ennemies::{def, EnemyKind};
 use crate::common::*;
 use rand::prelude::*;
@@ -9,15 +9,22 @@ pub fn spawn_wave_system(
     mut wave_manager: ResMut<WaveManager>,
     query_mobs: Query<Entity, (With<Mob>, Without<Boss>)>,
 ) {
-    // compter sbires : on verifie combien il en reste
     let mob_count_remaining = query_mobs.iter().count();
 
-    // declencher vague : si presque plus de sbires (<= 3) et qu'on a pas depassé la vague 3
+    // declencher vague : si presque plus de sbires et vague <= 3
     if mob_count_remaining <= 3 && wave_manager.current_wave <= 3 {
         let mut rng = rand::rng();
 
-        // choix du type d'ennemi pour TOUTE la vague
-        let kind = if rng.random_bool(0.5) { EnemyKind::Fourmi } else { EnemyKind::Puceron };
+        // determiner liste ennemis : selon le biome actuel
+        let possible_enemies = match wave_manager.current_biome {
+            Biome::Potager | Biome::Fraise => vec![EnemyKind::Puceron, EnemyKind::Limace, EnemyKind::Escargot],
+            Biome::TerreSeche | Biome::Gravier => vec![EnemyKind::Fourmi, EnemyKind::Scarabee, EnemyKind::Araignee],
+            Biome::Boue => vec![EnemyKind::Moustique, EnemyKind::Limace, EnemyKind::Escargot],
+            Biome::Dalles | Biome::Terrasse => vec![EnemyKind::Araignee, EnemyKind::Guepe, EnemyKind::Fourmi],
+        };
+
+        // choisir type : un seul type d'ennemi pour toute la vague
+        let kind = possible_enemies.choose(&mut rng).copied().unwrap_or(EnemyKind::Puceron);
         let stats = def(kind);
 
         // spawn sbires : commun a toutes les vagues
@@ -54,27 +61,32 @@ pub fn spawn_wave_system(
             let x = angle.cos() * distance;
             let y = angle.sin() * distance;
 
-            let kind = EnemyKind::Scarabee;
-            let stats = def(kind);
+            // definir boss : ennemi le plus imposant du biome
+            let boss_kind = match wave_manager.current_biome {
+                Biome::Potager | Biome::Fraise | Biome::Boue => EnemyKind::Escargot,
+                Biome::TerreSeche | Biome::Gravier => EnemyKind::Scarabee,
+                Biome::Dalles | Biome::Terrasse => EnemyKind::Guepe,
+            };
+            let boss_stats = def(boss_kind);
 
             commands.spawn((
                 Sprite {
-                    color: stats.color,
-                    custom_size: Some(Vec2::new(stats.radius * 4.0, stats.radius * 4.0)), // 2x plus grand (diamètre standard * 2)
+                    color: boss_stats.color,
+                    custom_size: Some(Vec2::new(boss_stats.radius * 4.0, boss_stats.radius * 4.0)), // taille double
                     ..Default::default()
                 },
                 Transform::from_xyz(x, y, 0.0),
-                Mob { kind },
-                Health { hp: (stats.hp * 2.0) as i32 },
+                Mob { kind: boss_kind },
+                Health { hp: (boss_stats.hp * 2.0) as i32 },
                 Boss,
                 Enemy,
-                ContactDmg(stats.dmg * 2.0),
-                BaseColor(stats.color),
+                ContactDmg(boss_stats.dmg * 2.0),
+                BaseColor(boss_stats.color),
                 crate::mobs::components::AiState::Idle,
             ));
-            info!("VAGUE 3 : LE BOSS {:?} APPARAIT !", kind);
+            info!("VAGUE 3 [{:?}] : LE BOSS {:?} APPARAIT !", wave_manager.current_biome, boss_kind);
         } else {
-            info!("VAGUE {} LANCEE", wave_manager.current_wave);
+            info!("VAGUE {} [{:?}] LANCEE (Type: {:?})", wave_manager.current_wave, wave_manager.current_biome, kind);
         }
 
         // passer a la vague suivante

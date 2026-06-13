@@ -16,15 +16,29 @@ pub enum AiState {
     Lunging { timer: Timer, direction: Vec3 },
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)]
+pub enum Biome {
+    Terrasse,
+    Gravier,
+    Boue,
+    TerreSeche,
+    Potager, // ou Tomate
+    Fraise,
+    Dalles,
+}
+
 #[derive(Resource)]
 pub struct WaveManager {
     pub current_wave: u32,
+    pub current_biome: Biome,
 }
 
 impl Default for WaveManager {
     fn default() -> Self {
         Self {
             current_wave: 1,
+            current_biome: Biome::TerreSeche, // biome de départ au hasard
         }
     }
 }
