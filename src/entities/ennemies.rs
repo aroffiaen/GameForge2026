@@ -329,6 +329,19 @@ pub fn debug_logger_system(
     }
 }
 
+// système de "cheat" temporaire pour tester les vagues sans attaquer
+pub fn debug_kill_mobs_system(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut query_mobs: Query<&mut Health, With<Enemy>>,
+) {
+    if keyboard_input.just_pressed(KeyCode::KeyK) {
+        info!("DEBUG: Touche K pressée ! Mort instantanée de tous les mobs pour tester la vague suivante.");
+        for mut health in query_mobs.iter_mut() {
+            health.hp = 0; // Le death_system va s'en occuper à la prochaine frame
+        }
+    }
+}
+
 // afficher projectile ennemie
 
 pub fn spawn_enemy_projectile(

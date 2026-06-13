@@ -4,11 +4,13 @@ mod entities;
 mod common;
 
 use bevy::prelude::*;
-use crate::common::{Arena, DamageMsg};
+use crate::common::{Arena, DamageMsg, GameState, RoomState};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .init_state::<GameState>()
+        .init_state::<RoomState>()
         .add_plugins(player::PlayerPlugin)
         .add_plugins(mobs::MobsPlugin)
         .add_plugins(entities::EntitiesPlugin)

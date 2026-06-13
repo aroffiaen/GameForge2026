@@ -80,6 +80,24 @@ pub struct Health {
     pub hp: i32,
 }
 
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum GameState {
+    #[default]
+    InGame,
+    GameOver,
+    Victory,
+    Cabanon,
+}
+
+#[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub enum RoomState {
+    #[default]
+    Combat,
+    Boss,
+    NextBiome,
+    Transition,
+}
+
 pub fn move_velocity(time: Res<Time>, mut query: Query<(&mut Transform, &Velocity)>) {
     for (mut tf, vel) in &mut query {
         tf.translation += vel.0.extend(0.0) * time.delta_secs();

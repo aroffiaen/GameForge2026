@@ -13,7 +13,7 @@ impl Plugin for MobsPlugin {
         app.init_resource::<WaveManager>()
             .add_systems(OnEnter(RoomState::Combat), spawn::setup_combat_room)
             .add_systems(OnEnter(RoomState::Boss), spawn::setup_boss_room)
-            .add_systems(OnEnter(RoomState::Treasure), spawn::setup_treasure_room)
+            .add_systems(OnEnter(RoomState::NextBiome), spawn::setup_next_biome)
             .add_systems(OnEnter(RoomState::Transition), spawn::transition_delay)
             .add_systems(
                 Update,

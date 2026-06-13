@@ -32,6 +32,7 @@ pub enum Biome {
 pub struct WaveManager {
     pub current_wave: u32,
     pub current_biome: Biome,
+    pub biomes_cleared: u32,
 }
 
 impl Default for WaveManager {
@@ -39,6 +40,7 @@ impl Default for WaveManager {
         Self {
             current_wave: 1,
             current_biome: Biome::TerreSeche, // biome de départ au hasard
+            biomes_cleared: 0,
         }
     }
 }
