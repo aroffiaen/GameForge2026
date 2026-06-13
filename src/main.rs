@@ -9,6 +9,7 @@ mod boss;
 mod cabanon;
 mod common;
 mod enemies;
+mod healthbar;
 mod meta;
 mod player;
 mod rooms;
@@ -79,6 +80,7 @@ fn main() {
             player::PlayerPlugin,
             weapons::WeaponsPlugin,
             enemies::EnemiesPlugin,
+            healthbar::HealthBarPlugin,
             boss::BossPlugin,
             rooms::RoomsPlugin,
             augments::AugmentsPlugin,

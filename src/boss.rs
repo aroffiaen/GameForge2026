@@ -86,7 +86,19 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
             });
         }
     }
-    e.id()
+    let id = e.id();
+    drop(e); // libère l'emprunt de `commands` avant de greffer la barre
+
+    // Barre de vie flottante + nametag, toujours visible (boss).
+    crate::healthbar::spawn_health_bar(
+        commands,
+        id,
+        radius + 20.0,
+        (radius * 2.2).max(48.0),
+        true,
+        Some(kind.name()),
+    );
+    id
 }
 
 // ---------------------------------------------------------------------------

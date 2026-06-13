@@ -242,7 +242,13 @@ pub fn spawn_enemy(
     if elite {
         e.insert(Elite);
     }
-    e.id()
+    let id = e.id();
+    drop(e); // libère l'emprunt de `commands` avant de greffer la barre
+
+    // Barre de vie flottante au-dessus du mob (apparaît dès qu'il est blessé).
+    let bar_w = (radius * 2.0).clamp(22.0, 64.0);
+    crate::healthbar::spawn_health_bar(commands, id, radius + 12.0, bar_w, false, None);
+    id
 }
 
 // ---------------------------------------------------------------------------
