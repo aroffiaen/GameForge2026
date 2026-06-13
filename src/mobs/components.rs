@@ -12,10 +12,6 @@ pub struct Health {
 }
 
 #[derive(Component)]
-#[allow(dead_code)]
-pub struct Player;
-
-#[derive(Component)]
 pub struct Boss;
 
 #[derive(Resource)]

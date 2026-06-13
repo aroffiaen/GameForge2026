@@ -1,12 +1,13 @@
 mod player;
+mod mobs;
 
 use bevy::prelude::*;
+use crate::mobs::MobsPlugin;
 
 fn main() {
-    let mut app = App::new();
-    app.add_plugins(DefaultPlugins);
-
-    app.add_plugins(player::PlayerPlugin);
-
-    app.run();
+    App::new()
+        .add_plugins(DefaultPlugins)
+        .add_plugins(player::PlayerPlugin)
+        .add_plugins(MobsPlugin)
+        .run();
 }
