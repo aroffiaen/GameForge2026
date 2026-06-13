@@ -29,6 +29,7 @@ pub enum Biome {
     Potager, // ou Tomate
     Fraise,
     Dalles,
+    Jardin,
 }
 
 #[derive(Resource)]

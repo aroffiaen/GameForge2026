@@ -12,6 +12,7 @@ pub enum BossKind {
     Araignee,
     Scorpion,
     Gromp,
+    MegaLimace,
 }
 
 impl BossKind {
@@ -20,6 +21,7 @@ impl BossKind {
             BossKind::Araignee => "Mémé Mygale",
             BossKind::Scorpion => "Roger le Scorpion",
             BossKind::Gromp => "Grompaud",
+            BossKind::MegaLimace => "Giga Limace",
         }
     }
 }
@@ -34,6 +36,7 @@ pub fn spawn_boss_specialized(
         BossKind::Araignee => (360.0, 25.0, Color::srgb(0.28, 0.24, 0.34), 13.0),
         BossKind::Scorpion => (360.0, 24.0, Color::srgb(0.65, 0.45, 0.2), 15.0),
         BossKind::Gromp => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
+        BossKind::MegaLimace => (400.0, 35.0, Color::srgb(0.8, 0.7, 0.3), 12.0),
     };
     
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
@@ -44,7 +47,7 @@ pub fn spawn_boss_specialized(
         BossAiTag,
         Sprite {
             color,
-            custom_size: Some(Vec2::splat(radius * 4.0)), // Visuellement plus gros
+            custom_size: Some(Vec2::new(radius * 5.0, radius * 3.5)), // Forme allongée de limace
             ..default()
         },
         BaseColor(color),
@@ -84,6 +87,11 @@ pub fn spawn_boss_specialized(
                 timer: Timer::from_seconds(1.2, TimerMode::Once),
                 leap_from: pos,
                 leap_to: pos,
+            });
+        }
+        BossKind::MegaLimace => {
+            commands.entity(boss_id).insert(MegaLimace {
+                trail_timer: Timer::from_seconds(0.15, TimerMode::Repeating),
             });
         }
     }
@@ -529,6 +537,53 @@ pub fn glob_system(
                     radius: 32.0,
                     life: Timer::from_seconds(3.5, TimerMode::Once),
                     tick: Timer::from_seconds(0.4, TimerMode::Repeating),
+                },
+            ));
+        }
+    }
+}
+
+// --- MEGA LIMACE ---
+
+#[derive(Component)]
+pub struct MegaLimace {
+    pub trail_timer: Timer,
+}
+
+pub fn mega_limace_ai(
+    time: Res<Time>,
+    mut commands: Commands,
+    player: Query<&Transform, With<Player>>,
+    mut bosses: Query<(&Transform, &mut Velocity, &mut MegaLimace), With<BossAiTag>>,
+) {
+    let Ok(player_tf) = player.single() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    let dt = time.delta_secs();
+    
+    for (tf, mut vel, mut slug) in &mut bosses {
+        let pos = tf.translation.truncate();
+        let dir = (player_pos - pos).normalize_or(Vec2::X);
+        
+        // La limace est lente mais inexorable
+        vel.0 = vel.0.move_towards(dir * 55.0, 300.0 * dt);
+        
+        // Laisser une traînée de bave
+        slug.trail_timer.tick(time.delta());
+        if slug.trail_timer.just_finished() {
+            commands.spawn((
+                Sprite {
+                    color: Color::srgba(0.8, 0.9, 0.2, 0.4),
+                    custom_size: Some(Vec2::splat(45.0)),
+                    ..default()
+                },
+                Transform::from_translation(pos.extend(-1.0)),
+                HazardPuddle {
+                    dps: 12.0,
+                    radius: 25.0,
+                    life: Timer::from_seconds(4.0, TimerMode::Once),
+                    tick: Timer::from_seconds(0.5, TimerMode::Repeating),
                 },
             ));
         }

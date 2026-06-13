@@ -60,9 +60,9 @@ pub fn setup_combat_room(
 
     let possible_enemies = match wave_manager.current_biome {
         Biome::Potager | Biome::Fraise => vec![EnemyKind::Puceron, EnemyKind::Limace, EnemyKind::Escargot],
-        Biome::TerreSeche | Biome::Gravier => vec![EnemyKind::Fourmi, EnemyKind::Scarabee, EnemyKind::Araignee],
+        Biome::TerreSeche | Biome::Gravier => vec![EnemyKind::Fourmi, EnemyKind::Cafard, EnemyKind::Scarabee],
         Biome::Boue => vec![EnemyKind::Moustique, EnemyKind::Limace, EnemyKind::Escargot],
-        Biome::Dalles | Biome::Terrasse => vec![EnemyKind::Araignee, EnemyKind::Guepe, EnemyKind::Fourmi],
+        Biome::Jardin | Biome::Dalles | Biome::Terrasse => vec![EnemyKind::Araignee, EnemyKind::Guepe, EnemyKind::Fourmi, EnemyKind::Cafard],
     };
 
     let kind = possible_enemies.choose(&mut rng).copied().unwrap_or(EnemyKind::Puceron);
@@ -85,11 +85,21 @@ pub fn setup_boss_room(
 ) {
     let mut rng = rand::rng();
 
-    // Déterminer quel boss spécialisé spawn selon le biome
+    // Déterminer quel boss spécialisé spawn selon le biome (Alignement GDD/User)
     let boss_kind = match wave_manager.current_biome {
-        Biome::Potager | Biome::Fraise | Biome::Boue => super::bosses::BossKind::Gromp,
         Biome::TerreSeche | Biome::Gravier => super::bosses::BossKind::Scorpion,
-        Biome::Dalles | Biome::Terrasse => super::bosses::BossKind::Araignee,
+        Biome::Potager | Biome::Fraise => super::bosses::BossKind::MegaLimace,
+        Biome::Boue => super::bosses::BossKind::Gromp,
+        Biome::Jardin | Biome::Dalles => super::bosses::BossKind::Araignee,
+        Biome::Terrasse => {
+            let kinds = [
+                super::bosses::BossKind::Araignee,
+                super::bosses::BossKind::Scorpion,
+                super::bosses::BossKind::Gromp,
+                super::bosses::BossKind::MegaLimace,
+            ];
+            *kinds.choose(&mut rng).unwrap()
+        }
     };
     
     info!("STATEUP : Salle de Boss [{:?}] - {} APPARAIT !", wave_manager.current_biome, boss_kind.name());
@@ -100,9 +110,9 @@ pub fn setup_boss_room(
     // Spawn de quelques sbires d'accompagnement
     let possible_enemies = match wave_manager.current_biome {
         Biome::Potager | Biome::Fraise => vec![EnemyKind::Puceron, EnemyKind::Limace, EnemyKind::Escargot],
-        Biome::TerreSeche | Biome::Gravier => vec![EnemyKind::Fourmi, EnemyKind::Scarabee, EnemyKind::Araignee],
+        Biome::TerreSeche | Biome::Gravier => vec![EnemyKind::Fourmi, EnemyKind::Cafard, EnemyKind::Scarabee],
         Biome::Boue => vec![EnemyKind::Moustique, EnemyKind::Limace, EnemyKind::Escargot],
-        Biome::Dalles | Biome::Terrasse => vec![EnemyKind::Araignee, EnemyKind::Guepe, EnemyKind::Fourmi],
+        Biome::Jardin | Biome::Dalles | Biome::Terrasse => vec![EnemyKind::Araignee, EnemyKind::Guepe, EnemyKind::Fourmi, EnemyKind::Cafard],
     };
     let minion_kind = possible_enemies.choose(&mut rng).copied().unwrap_or(EnemyKind::Puceron);
     let spawn_count = rng.random_range(3..=5); // quelques sbires

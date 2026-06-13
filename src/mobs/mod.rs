@@ -24,6 +24,7 @@ impl Plugin for MobsPlugin {
                     bosses::araignee_ai,
                     bosses::scorpion_ai,
                     bosses::gromp_ai,
+                    bosses::mega_limace_ai,
                     bosses::glob_system,
                 )
                     .run_if(in_state(GameState::InGame))

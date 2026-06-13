@@ -14,6 +14,7 @@ pub enum EnemyKind {
     Puceron,
     Fourmi,
     Araignee,
+    Cafard,
     Moustique,
     Guepe,
     Scarabee,
@@ -69,6 +70,17 @@ pub fn def(kind: EnemyKind) -> EnemyDef {
             color: Color::srgb(0.25, 0.22, 0.3),
             ai: AiKind::Lunge,
             poison_vuln: 1.0,
+        },
+        EnemyKind::Cafard => EnemyDef {
+            name: "Cafard",
+            hp: 30.0,
+            speed: 180.0,
+            dmg: 7.0,
+            radius: 22.0,
+            pattes: 3,
+            color: Color::srgb(0.35, 0.25, 0.1),
+            ai: AiKind::Lunge,
+            poison_vuln: 0.8, // Les cafards sont résistants
         },
         EnemyKind::Moustique => EnemyDef {
             name: "Moustique",
