@@ -19,9 +19,13 @@ fn main() {
         .add_plugins(mobs::MobsPlugin)
         .add_plugins(entities::EntitiesPlugin)
         .insert_resource(Arena { half: Vec2::new(600.0, 400.0) })
+        .init_resource::<common::Paused>()
         .add_message::<DamageMsg>()
         .add_systems(Update, (common::move_velocity, common::update_lifetime).run_if(in_state(GameState::InGame)))
         
+        // Pause et Restart
+        .add_systems(Update, (ui::pause_system, ui::reset_pause_system).run_if(in_state(GameState::InGame)))
+
         // Affiche l'écran uniquement en entrant dans l'état GameOver
         .add_systems(OnEnter(GameState::GameOver), ui::spawn_game_over_ui)
 

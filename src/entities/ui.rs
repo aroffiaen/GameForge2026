@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use crate::common::{Health, HealthBar, HealthBarFill};
+use crate::common::{Health, HealthBar, HealthBarFill, Paused};
 use crate::common::GameState;
 use crate::player::Player;
 
@@ -162,3 +162,62 @@ pub fn spawn_game_over_ui(mut commands: Commands) {
         }
         }
 
+        // --- SYSTÈME DE PAUSE ---
+
+        #[derive(Component)]
+        pub struct PauseUi;
+
+        pub fn pause_system(
+        mut commands: Commands,
+        keyboard_input: Res<ButtonInput<KeyCode>>,
+        mut paused: ResMut<Paused>,
+        ui_query: Query<Entity, With<PauseUi>>,
+        ) {
+        if keyboard_input.just_pressed(KeyCode::Escape) {
+        paused.0 = !paused.0;
+
+        if paused.0 {
+            // Afficher l'UI de pause
+            commands.spawn((
+                PauseUi,
+                Node {
+                    width: Val::Percent(100.0),
+                    height: Val::Percent(100.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+            )).with_children(|parent| {
+                parent.spawn((
+                    Text::new("PAUSE"),
+                    TextFont {
+                        font_size: 40.0,
+                        ..default()
+                    },
+                    TextColor(Color::WHITE),
+                ));
+            });
+            info!("⏸️ Jeu en pause");
+        } else {
+            // Cacher l'UI de pause
+            for e in ui_query.iter() {
+                commands.entity(e).despawn();
+            }
+            info!("▶️ Reprise du jeu");
+        }
+        }
+        }
+
+        pub fn reset_pause_system(
+        mut paused: ResMut<Paused>, 
+        mut commands: Commands, 
+        q: Query<Entity, With<PauseUi>>
+        ) {
+        // Si on reset la pause (par exemple via restart_game), on nettoie tout
+        if !paused.0 {
+        for e in &q {
+            commands.entity(e).despawn();
+        }
+        }
+        }
