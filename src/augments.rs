@@ -7,10 +7,13 @@ use crate::common::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Augment {
-    // Vitesse (qui est aussi des dégâts, GDD §3.1)
+    // Vitesse / élan
     JambesDeCriquet,
     Cafeine,
     Adrenaline,
+    /// L'ancienne mécanique signature, devenue optionnelle (GDD §4.x) :
+    /// la vitesse redonne des dégâts, mais en doux (×0.8 → ×1.5).
+    Elan,
     // Dash / burst
     DashOffensif,
     DoubleDetente,
@@ -37,6 +40,7 @@ pub const POOL: &[Augment] = &[
     Augment::JambesDeCriquet,
     Augment::Cafeine,
     Augment::Adrenaline,
+    Augment::Elan,
     Augment::DashOffensif,
     Augment::DoubleDetente,
     Augment::EsquiveFeline,
@@ -60,6 +64,7 @@ impl Augment {
             Augment::JambesDeCriquet => "Jambes de criquet",
             Augment::Cafeine => "Café du bousier",
             Augment::Adrenaline => "Adrénaline",
+            Augment::Elan => "Élan",
             Augment::DashOffensif => "Dash offensif",
             Augment::DoubleDetente => "Double détente",
             Augment::EsquiveFeline => "Esquive féline",
@@ -80,13 +85,14 @@ impl Augment {
 
     pub fn desc(self) -> &'static str {
         match self {
-            Augment::JambesDeCriquet => "+15 % de vitesse max (donc +dégâts).",
+            Augment::JambesDeCriquet => "+15 % de vitesse max.",
             Augment::Cafeine => "+30 % d'accélération. Nerveux.",
             Augment::Adrenaline => "Sous 30 % de PV : +25 % de vitesse.",
+            Augment::Elan => "L'élan paie : dégâts ×0,8 à l'arrêt → ×1,5 à pleine vitesse.",
             Augment::DashOffensif => "Attaque pendant le dash + burst ×1,5 en sortie.",
             Augment::DoubleDetente => "Une 2e charge de dash.",
             Augment::EsquiveFeline => "I-frames du dash allongées.",
-            Augment::SortieExplosive => "Explosion en sortie de dash (∝ vitesse).",
+            Augment::SortieExplosive => "Explosion en sortie de dash.",
             Augment::PesticideConcentre => "Poison +60 % de dégâts.",
             Augment::RateauAimante => "Râteau : rayon +40 % et ralentit 1,5 s.",
             Augment::BuseHautePression => "Karcher : +25 % dégâts, recul ×1,6.",

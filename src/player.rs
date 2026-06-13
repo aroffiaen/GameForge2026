@@ -56,9 +56,8 @@ impl PlayerStats {
     pub fn compute(meta: &MetaSave, augments: &Augments, stats: &Stats) -> Self {
         let speed_stacks = augments.count(Augment::JambesDeCriquet) as f32;
         Self {
-            // Vitesse de pointe : 250 px/s par défaut → ×2.5 de dégâts au max
-            // (cf. SPEED_PER_MULT). Chaque bonus de vitesse relève donc aussi
-            // le plafond de dégâts. ×MoveSpeed%/100.
+            // Vitesse de pointe : 250 px/s à 100 %, ×MoveSpeed%/100. La vitesse
+            // ne donne plus de dégâts par défaut (refonte v0.3, voir Élan).
             max_speed: 250.0
                 * (1.0 + 0.05 * meta.up_speed as f32)
                 * (1.0 + 0.15 * speed_stacks)
@@ -88,7 +87,9 @@ impl PlayerStats {
     }
 }
 
-/// Vitesse instantanée → multiplicateur de dégâts (la mécanique signature).
+/// Lecture de la vitesse instantanée. `ratio` (0..1) = vitesse/vitesse max
+/// (feedback visuel + augment Élan). `mult` = multiplicateur de dégâts lié à la
+/// vitesse : ×1.0 par défaut (refonte v0.3), ×0.8→×1.5 avec l'augment « Élan ».
 #[derive(Resource, Default)]
 pub struct SpeedInfo {
     pub ratio: f32,
@@ -482,6 +483,7 @@ fn dash_system(
 
 fn update_speed_info(
     stats: Res<PlayerStats>,
+    augments: Res<Augments>,
     mut info: ResMut<SpeedInfo>,
     player: Query<&Velocity, With<Player>>,
 ) {
@@ -489,13 +491,18 @@ fn update_speed_info(
         return;
     };
     let speed_len = vel.0.length();
-    // `ratio` (0..1) ne sert qu'au feedback visuel (teinte/traînée/HUD).
+    // `ratio` (0..1) sert au feedback visuel (teinte/traînée/HUD) et à l'augment
+    // « Élan ». On le plafonne à 1 pour que le dash (sur-vitesse) ne le fasse pas
+    // exploser.
     info.ratio = (speed_len / stats.max_speed).clamp(0.0, 1.0);
-    // Modèle flat : mult = vitesse / SPEED_PER_MULT. On plafonne la vitesse
-    // effective à `max_speed` pour que le dash (sur-vitesse) ne donne pas un
-    // multiplicateur absurde — il octroie pile le mult de pointe.
-    let eff = speed_len.min(stats.max_speed);
-    info.mult = (eff / SPEED_PER_MULT).max(DMG_MULT_MIN);
+    // Refonte v0.3 (GDD §4.x) : la vitesse ne donne PLUS de dégâts par défaut.
+    // Le multiplicateur reste neutre (×1.0), sauf si l'augment « Élan » est pris,
+    // qui réintroduit une courbe douce ×0.8 (arrêt) → ×1.5 (vitesse max).
+    info.mult = if augments.has(Augment::Elan) {
+        0.8 + 0.7 * info.ratio
+    } else {
+        1.0
+    };
 }
 
 /// Feedback visuel de la vitesse : traînée de fantômes du chapeau quand on file.

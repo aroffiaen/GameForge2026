@@ -11,13 +11,6 @@ use crate::player::PlayerStats;
 // Constantes de design (GDD §3)
 // ---------------------------------------------------------------------------
 
-/// Modèle « flat » (GDD §3.1) : la vitesse réelle (px/s) divisée par cette
-/// valeur donne le multiplicateur de dégâts. 100 px/s = ×1.0, 250 px/s = ×2.5.
-/// Comme le calcul part de la vitesse absolue, chaque bonus de vitesse relève
-/// AUSSI le plafond de dégâts atteignable.
-pub const SPEED_PER_MULT: f32 = 100.0;
-/// Plancher du multiplicateur quand le joueur est (quasi) immobile.
-pub const DMG_MULT_MIN: f32 = 0.4;
 pub const PLAYER_RADIUS: f32 = 12.0;
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 use bevy::prelude::*;
 
+use crate::augments::{Augment, Augments};
 use crate::common::*;
 use crate::meta::MetaSave;
 use crate::player::{Dash, SpeedInfo};
@@ -301,12 +302,21 @@ fn update_weapons(
     text.0 = format!("G: {}   D: {}   Dash: {}", slot(0), slot(1), dash_txt);
 }
 
-fn update_speed(info: Res<SpeedInfo>, mut q: Query<(&mut Text, &mut TextColor), With<SpeedLabel>>) {
+fn update_speed(
+    info: Res<SpeedInfo>,
+    augments: Res<Augments>,
+    mut q: Query<(&mut Text, &mut TextColor), With<SpeedLabel>>,
+) {
     let Ok((mut text, mut color)) = q.single_mut() else { return };
-    text.0 = format!("×{:.1}", info.mult);
-    let cold = Color::srgb(0.75, 0.75, 0.75);
-    let hot = Color::srgb(1.0, 0.45, 0.1);
-    color.0 = cold.mix(&hot, info.ratio);
+    // Sans l'augment « Élan », la vitesse ne donne plus de dégâts → rien à montrer.
+    if augments.has(Augment::Elan) {
+        text.0 = format!("Élan ×{:.1}", info.mult);
+        let cold = Color::srgb(0.75, 0.75, 0.75);
+        let hot = Color::srgb(1.0, 0.45, 0.1);
+        color.0 = cold.mix(&hot, info.ratio);
+    } else {
+        text.0.clear();
+    }
 }
 
 fn update_center(
