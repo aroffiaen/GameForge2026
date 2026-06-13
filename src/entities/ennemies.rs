@@ -298,8 +298,39 @@ pub fn death_system(
     }
 }
 
+// système de débogage pour afficher les HP et positions
+pub fn debug_logger_system(
+    time: Res<Time>,
+    mut timer: Local<Timer>,
+    query_player: Query<(&Transform, &Health), With<Player>>,
+    query_mobs: Query<(Entity, &Transform, &Health, Option<&EnemyKind>), With<Enemy>>,
+) {
+    // initialiser le timer s'il vient d'être créé
+    if timer.duration() == std::time::Duration::ZERO {
+        *timer = Timer::from_seconds(1.0, TimerMode::Repeating);
+    }
+
+    timer.tick(time.delta());
+
+    if timer.just_finished() {
+        if let Ok((tf, health)) = query_player.single() {
+            let pos = tf.translation.truncate();
+            info!("PLAYER | HP: {} | Pos: X={:.1}, Y={:.1}", health.hp, pos.x, pos.y);
+        }
+
+        for (entity, tf, health, kind) in query_mobs.iter() {
+            let pos = tf.translation.truncate();
+            if let Some(k) = kind {
+                info!("MOB {:?} ({:?}) | HP: {} | Pos: X={:.1}, Y={:.1}", entity, k, health.hp, pos.x, pos.y);
+            } else {
+                info!("MOB {:?} | HP: {} | Pos: X={:.1}, Y={:.1}", entity, health.hp, pos.x, pos.y);
+            }
+        }
+    }
+}
 
 // afficher projectile ennemie
+
 pub fn spawn_enemy_projectile(
     commands: &mut Commands,
     pos: Vec2,

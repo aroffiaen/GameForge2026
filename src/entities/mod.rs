@@ -14,6 +14,7 @@ impl Plugin for EntitiesPlugin {
             ennemies::contact_damage,
             ennemies::handle_damage,
             ennemies::death_system,
+            ennemies::debug_logger_system,
         ));
     }
 }
