@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+<<<<<<< HEAD
 use super::components::{Mob, Health, Boss, WaveManager};
 use rand::prelude::*;
 
@@ -67,4 +68,18 @@ pub fn spawn_wave_system(
         // passer a la vague suivante
         wave_manager.current_wave += 1;
     }
+=======
+use super::components::{Mob, Health};
+
+const SPEED: f32 = 50.0;
+const HP: i32 = 1;
+
+pub fn spawn_mobs(mut commands: Commands) {
+    // Spawn un mob avec Transform
+    commands.spawn((
+        Mob { speed: SPEED },
+        Transform::from_xyz(0.0, 0.0, 0.0),
+        Health { hp: HP },
+    ));
+>>>>>>> 6467fad (🏗️ feat: update mob AI and health system; replace Position with Transform)
 }
