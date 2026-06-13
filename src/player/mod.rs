@@ -92,6 +92,7 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             crate::common::Health { hp: 100 },
             crate::common::Radius(48.0), // Rayon augmenté pour coller aux assets 128x128
             Iframes(Timer::from_seconds(0.0, TimerMode::Once)),
+            crate::common::Velocity(Vec2::ZERO),
         ))
         .add_children(&[legs, arms, hat]);
 }

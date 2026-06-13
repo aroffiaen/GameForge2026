@@ -46,6 +46,11 @@ pub struct EnemyProjectile {
 }
 
 #[derive(Component)]
+pub struct PlayerProjectile {
+    pub dmg: f32,
+}
+
+#[derive(Component)]
 pub struct Velocity(pub Vec2);
 
 #[derive(Component)]
@@ -61,6 +66,9 @@ impl Lifetime {
 pub struct Arena {
     pub half: Vec2,
 }
+
+#[derive(Component)]
+pub struct Untouchable;
 
 #[derive(Component)]
 pub struct Radius(pub f32);

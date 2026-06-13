@@ -12,6 +12,7 @@ impl Plugin for EntitiesPlugin {
             ennemies::enemy_projectiles,
             ennemies::hazard_puddles,
             ennemies::contact_damage,
+            ennemies::tick_iframes,
             ennemies::handle_damage,
             ennemies::death_system,
             ennemies::debug_logger_system,

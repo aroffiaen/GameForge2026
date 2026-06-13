@@ -243,7 +243,7 @@ pub fn hazard_puddles(
 pub fn contact_damage(
     mut dmg: BevyMessageWriter<DamageMsg>,
     query_player: Query<(Entity, &Transform, &Radius, &Iframes), With<Player>>,
-    query_mobs: Query<(&Transform, &ContactDmg), With<Enemy>>,
+    query_mobs: Query<(&Transform, &ContactDmg, &Radius), With<Enemy>>,
 ) {
     let Ok((player_e, player_tf, player_r, iframes)) = query_player.single() else {
         return;
@@ -255,9 +255,9 @@ pub fn contact_damage(
 
     let player_pos = player_tf.translation.truncate();
 
-    for (mob_tf, contact) in query_mobs.iter() {
+    for (mob_tf, contact, mob_r) in query_mobs.iter() {
         let mob_pos = mob_tf.translation.truncate();
-        if mob_pos.distance(player_pos) < player_r.0 + 10.0 {
+        if mob_pos.distance(player_pos) < player_r.0 + mob_r.0 {
             dmg.write(DamageMsg {
                 target: player_e,
                 amount: contact.0,
@@ -268,19 +268,34 @@ pub fn contact_damage(
     }
 }
 
+// tick des iframes du joueur
+pub fn tick_iframes(time: Res<Time>, mut query: Query<&mut Iframes>) {
+    for mut iframes in &mut query {
+        iframes.0.tick(time.delta());
+    }
+}
+
 // système qui applique réellement les dégâts
 pub fn handle_damage(
     mut messages: BevyMessageReader<DamageMsg>,
-    mut query_health: Query<(&mut Health, Option<&mut Iframes>)>,
+    mut query_health: Query<(Entity, &mut Health, Option<&mut Iframes>, Has<Player>, Has<Untouchable>)>,
 ) {
     for msg in messages.read() {
-        if let Ok((mut health, iframes)) = query_health.get_mut(msg.target) {
+        if let Ok((entity, mut health, iframes, is_player, untouchable)) = query_health.get_mut(msg.target) {
+            if untouchable {
+                continue;
+            }
             health.hp -= msg.amount as i32;
             
             if let Some(mut iframes) = iframes {
                 iframes.0 = Timer::from_seconds(0.5, TimerMode::Once);
             }
-            info!("Entity {:?} took {} damage! HP left: {}", msg.target, msg.amount, health.hp);
+
+            if is_player {
+                warn!("💥 JOUEUR TOUCHÉ ! -{} PV | Restant: {} HP", msg.amount, health.hp);
+            } else {
+                info!("Entity {:?} took {} damage! HP left: {}", entity, msg.amount, health.hp);
+            }
         }
     }
 }

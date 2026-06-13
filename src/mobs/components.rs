@@ -10,6 +10,9 @@ pub struct Mob {
 pub struct Boss;
 
 #[derive(Component)]
+pub struct BossAiTag;
+
+#[derive(Component)]
 pub enum AiState {
     Idle,
     Charging { timer: Timer },

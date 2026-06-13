@@ -23,7 +23,7 @@ pub fn mob_ai(
         })
         .collect();
 
-    for (entity, mob, tf, mut vel, mut lunge, slowed) in &mut query_mobs {
+    for (entity, mob, tf, mut vel, lunge, slowed) in &mut query_mobs {
         let stats = def(mob.kind);
         let pos = tf.translation.truncate();
         let to_player = player_pos - pos;
@@ -35,8 +35,6 @@ pub fn mob_ai(
             max_speed *= 0.45;
         }
 
-        let mut is_lunging_now = false;
-
         let target_vel = match stats.ai {
             AiKind::Chase => dir * max_speed,
             AiKind::Lunge => {
@@ -44,13 +42,11 @@ pub fn mob_ai(
                     lunge.cd.tick(time.delta());
                     lunge.active.tick(time.delta());
                     if !lunge.active.is_finished() {
-                        is_lunging_now = true;
                         lunge.dir * max_speed * 2.6
                     } else if lunge.cd.is_finished() && dist < 220.0 {
                         lunge.dir = dir;
                         lunge.active.reset();
                         lunge.cd = Timer::from_seconds(1.8, TimerMode::Once);
-                        is_lunging_now = true;
                         dir * max_speed * 2.6
                     } else {
                         dir * max_speed
@@ -84,14 +80,6 @@ pub fn mob_ai(
             if distance_mobs < safe_dist && distance_mobs > 0.0 {
                 let strength = (safe_dist - distance_mobs).powi(2) / safe_dist;
                 separation += diff.normalize() * strength;
-            }
-        }
-
-        if !is_lunging_now {
-            let player_safe_dist = stats.radius + 48.0 + 5.0; // Rayon du joueur à 48.0
-            if dist < player_safe_dist && dist > 0.0 {
-                let strength = (player_safe_dist - dist).powi(2) / player_safe_dist;
-                separation -= dir * strength * 3.0; // dir pointe vers le joueur, on soustrait
             }
         }
 
