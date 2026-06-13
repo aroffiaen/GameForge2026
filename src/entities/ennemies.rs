@@ -294,7 +294,7 @@ pub fn handle_damage(
 ) {
     for msg in messages.read() {
         if let Ok((entity, mut health, iframes, is_player, untouchable)) = query_health.get_mut(msg.target) {
-            if untouchable {
+            if untouchable || health.hp <= 0 {
                 continue;
             }
             health.hp -= msg.amount as i32;
@@ -316,14 +316,16 @@ pub fn handle_damage(
 pub fn death_system(
     mut commands: Commands,
     query: Query<(Entity, &Health, Has<Player>)>,
+    state: Res<State<GameState>>,
     mut next_state: ResMut<NextState<GameState>>, // Permet de changer d'état
 ) {
     for (entity, health, is_player) in query.iter() {
         if health.hp <= 0 {
             if is_player {
-                // bloquer jeu : declenche le game over au lieu de detruire le joueur
-                info!("💀 Le joueur est mort ! GAME OVER");
-                next_state.set(GameState::GameOver);
+                if *state.get() != GameState::GameOver {
+                    info!("💀 Le joueur est mort ! GAME OVER");
+                    next_state.set(GameState::GameOver);
+                }
             } else {
                 // detruire mob : comportement normal pour les ennemis
                 commands.entity(entity).despawn();
