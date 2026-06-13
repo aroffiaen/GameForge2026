@@ -11,8 +11,12 @@ opt-level = 3
 
 [dependencies]
 bevy = "0.18.1"
+<<<<<<< HEAD
 bevy_ecs_macros = "0.18.1"
 rand = "0.10.1"
 
 [features]
 full-screen = []
+=======
+rand = "0.10.1"
+>>>>>>> ebf8783 (✨ feat : ameliorer spawn aleatoire et deplacement mobs)
