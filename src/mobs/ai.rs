@@ -97,7 +97,8 @@ pub fn mob_ai(
         if let AiState::Lunging { .. } = *ai_state {
             // Traverse partiellement le joueur en chargeant
         } else {
-            let player_safe_dist = 45.0;
+            // Distance de sécurité dynamique : rayon du mob + nouveau rayon du joueur (48.0) + petite marge
+            let player_safe_dist = stats.radius + 48.0 + 5.0; 
             if dist_player < player_safe_dist && dist_player > 0.0 {
                 let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
                 // diff_player pointe VERS le joueur, on soustrait pour être REPOUSSÉ
