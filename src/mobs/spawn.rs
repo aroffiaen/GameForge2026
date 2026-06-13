@@ -22,7 +22,7 @@ pub fn spawn_wave_system(
         let wave_speed = SPEED + (wave_manager.current_wave as f32 - 1.0) * 20.0;
         
         // spawn sbires : commun a toutes les vagues
-        let spawn_count = rng.random_range(5..15);
+        let spawn_count = rng.random_range(5..10);
         for _ in 0..spawn_count {
             let angle = rng.random_range(0.0..std::f32::consts::TAU);
             let distance = rng.random_range(300.0..800.0);
