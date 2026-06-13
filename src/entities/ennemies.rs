@@ -310,7 +310,6 @@ pub fn spawn_enemy_projectile(
 mod tests {
     use super::*;
     use crate::player::Player;
-    use bevy::ecs::system::RunSystemOnce;
 
     #[test]
     fn test_contact_damage_and_hp_loss() {
