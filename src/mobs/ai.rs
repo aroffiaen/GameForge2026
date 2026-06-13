@@ -100,7 +100,8 @@ pub fn mob_ai(
             let player_safe_dist = 45.0;
             if dist_player < player_safe_dist && dist_player > 0.0 {
                 let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
-                separation += diff_player.normalize() * strength * 2.0;
+                // diff_player pointe VERS le joueur, on soustrait pour être REPOUSSÉ
+                separation -= diff_player.normalize() * strength * 3.0; 
             }
         }
 
