@@ -12,7 +12,6 @@ impl Plugin for MobsPlugin {
         app.init_resource::<WaveManager>()
             .add_systems(Update, (
                 ai::mob_ai,
-                ai::health_system,
                 spawn::spawn_wave_system,
             ));
     }

@@ -13,6 +13,7 @@ impl Plugin for EntitiesPlugin {
             ennemies::hazard_puddles,
             ennemies::contact_damage,
             ennemies::handle_damage,
+            ennemies::death_system,
         ));
     }
 }

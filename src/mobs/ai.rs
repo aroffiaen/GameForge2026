@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use super::components::Mob;
-use crate::common::{Health};
 use crate::player::Player;
 use crate::entities::ennemies::def;
 
@@ -39,7 +38,7 @@ pub fn mob_ai(
 
             let diff = position - *other_pos;
             let distance = diff.length();
-            let safe_dist = 50.0; //
+            let safe_dist = 45.0; // Valeur fixe de test initial
 
             if distance < safe_dist && distance > 0.0 {
                 let strength = (safe_dist - distance).powi(2) / safe_dist;
@@ -50,12 +49,13 @@ pub fn mob_ai(
         // eviter le joueur (collision physique)
         let diff_player = position - target_pos;
         let dist_player = diff_player.length();
-        let player_safe_dist = 50.0; //
+        let player_safe_dist = 45.0; // Valeur fixe de ton test initial
 
         if dist_player < player_safe_dist && dist_player > 0.0 {
             let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
             separation += diff_player.normalize() * strength * 2.0; // repulsion plus forte
         }
+
 
         // combiner mouvement : vers le joueur + evitement
         if direction.length() > 0.0 {
@@ -68,11 +68,5 @@ pub fn mob_ai(
             let velocity = final_move.normalize() * stats.speed * time.delta_secs();
             transform.translation += velocity;
         }
-    }
-}
-
-pub fn health_system(query: Query<&Health>) {
-    for health in query.iter() {
-        info!("Mob HP: {}", health.hp);
     }
 }

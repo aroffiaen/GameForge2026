@@ -285,6 +285,20 @@ pub fn handle_damage(
     }
 }
 
+// gestion de la mort (despawn à 0 HP)
+pub fn death_system(
+    mut commands: Commands,
+    query: Query<(Entity, &Health)>,
+) {
+    for (entity, health) in query.iter() {
+        if health.hp <= 0 {
+            info!("Entity {:?} is dead!", entity);
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
+
 // afficher projectile ennemie
 pub fn spawn_enemy_projectile(
     commands: &mut Commands,
