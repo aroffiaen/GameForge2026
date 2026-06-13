@@ -17,6 +17,8 @@ pub enum BossKind {
     Araignee,
     Scorpion,
     Gromp,
+    /// Boss du Potager (GDD §7). Porté de feat/player (« Giga Limace »).
+    MegaLimace,
 }
 
 impl BossKind {
@@ -25,6 +27,7 @@ impl BossKind {
             BossKind::Araignee => "Mémé Mygale",
             BossKind::Scorpion => "Roger le Scorpion",
             BossKind::Gromp => "Grompaud",
+            BossKind::MegaLimace => "Méga-Limace",
         }
     }
 }
@@ -42,11 +45,17 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         BossKind::Araignee => (360.0, 25.0, Color::srgb(0.28, 0.24, 0.34), 13.0),
         BossKind::Scorpion => (360.0, 24.0, Color::srgb(0.65, 0.45, 0.2), 15.0),
         BossKind::Gromp => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
+        BossKind::MegaLimace => (430.0, 34.0, Color::srgb(0.8, 0.85, 0.3), 11.0),
     };
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
+    // La limace a une silhouette allongée ; les autres sont ~circulaires.
+    let size = match kind {
+        BossKind::MegaLimace => Vec2::new(radius * 3.4, radius * 2.2),
+        _ => Vec2::splat(radius * 2.1),
+    };
     let mut e = commands.spawn((
         (Enemy, BossTag, BossAiTag),
-        Sprite::from_color(color, Vec2::splat(radius * 2.1)),
+        Sprite::from_color(color, size),
         BaseColor(color),
         Transform::from_translation(pos.extend(8.5)),
         Velocity::default(),
@@ -83,6 +92,13 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
                 timer: Timer::from_seconds(1.2, TimerMode::Once),
                 leap_from: pos,
                 leap_to: pos,
+            });
+        }
+        BossKind::MegaLimace => {
+            e.insert(MegaLimace {
+                state: LimaceState::Crawl,
+                timer: Timer::from_seconds(1.5, TimerMode::Once),
+                trail: Timer::from_seconds(0.45, TimerMode::Repeating),
             });
         }
     }
@@ -527,6 +543,120 @@ fn glob_system(
 }
 
 // ---------------------------------------------------------------------------
+// Méga-Limace (Potager) : reptation baveuse, crachat radial, ponte de limaces.
+// Portée de feat/player (« Giga Limace ») — la reptation + traînée de bave est
+// fidèle à l'original ; le crachat et la ponte la dotent des 3 patterns
+// attendus d'un boss (GDD §8.2), au niveau des autres boss de test.
+// ---------------------------------------------------------------------------
+
+#[derive(Component)]
+pub struct MegaLimace {
+    state: LimaceState,
+    timer: Timer,
+    /// Cadence de dépose de la traînée de bave (en reptation).
+    trail: Timer,
+}
+
+enum LimaceState {
+    Crawl,
+    SpitTelegraph,
+    Spit,
+    Summon,
+}
+
+fn mega_limace_ai(
+    time: Res<Time>,
+    mut commands: Commands,
+    player: Query<&Transform, With<Player>>,
+    mut bosses: Query<(&Transform, &mut Velocity, &mut MegaLimace), Without<Player>>,
+) {
+    let Ok(player_tf) = player.single() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    let mut rng = rand::rng();
+    let dt = time.delta_secs();
+
+    for (tf, mut vel, mut slug) in &mut bosses {
+        slug.timer.tick(time.delta());
+        slug.trail.tick(time.delta());
+        let pos = tf.translation.truncate();
+        let dir = (player_pos - pos).normalize_or(Vec2::X);
+
+        match slug.state {
+            LimaceState::Crawl => {
+                // Lente mais inexorable, en laissant une traînée de bave toxique.
+                vel.0 = vel.0.move_towards(dir * 55.0, 300.0 * dt);
+                if slug.trail.just_finished() {
+                    commands.spawn((
+                        Sprite::from_color(
+                            Color::srgb(0.8, 0.9, 0.2).with_alpha(0.4),
+                            Vec2::splat(45.0),
+                        ),
+                        Transform::from_translation(pos.extend(-1.0)),
+                        HazardPuddle {
+                            dps: 12.0,
+                            radius: 25.0,
+                            life: Timer::from_seconds(4.0, TimerMode::Once),
+                            tick: Timer::from_seconds(0.5, TimerMode::Repeating),
+                        },
+                    ));
+                }
+                if slug.timer.is_finished() {
+                    if rng.random_bool(0.6) {
+                        slug.state = LimaceState::SpitTelegraph;
+                        slug.timer = Timer::from_seconds(0.4, TimerMode::Once);
+                    } else {
+                        slug.state = LimaceState::Summon;
+                        slug.timer = Timer::from_seconds(0.3, TimerMode::Once);
+                    }
+                }
+            }
+            LimaceState::SpitTelegraph => {
+                vel.0 = vel.0.move_towards(Vec2::ZERO, 600.0 * dt);
+                if slug.timer.is_finished() {
+                    slug.state = LimaceState::Spit;
+                    slug.timer = Timer::from_seconds(0.2, TimerMode::Once);
+                }
+            }
+            LimaceState::Spit => {
+                vel.0 = Vec2::ZERO;
+                if slug.timer.is_finished() {
+                    // Crachat de bave en couronne radiale.
+                    for i in 0..12 {
+                        let d = Vec2::from_angle(i as f32 / 12.0 * std::f32::consts::TAU);
+                        spawn_enemy_projectile(
+                            &mut commands,
+                            pos + d * 26.0,
+                            d * 200.0,
+                            8.0,
+                            Color::srgb(0.7, 0.9, 0.25),
+                        );
+                    }
+                    slug.state = LimaceState::Crawl;
+                    slug.timer = Timer::from_seconds(1.4, TimerMode::Once);
+                }
+            }
+            LimaceState::Summon => {
+                vel.0 = Vec2::ZERO;
+                if slug.timer.is_finished() {
+                    // Ponte de 2 limaces (les rejetons de la matriarche).
+                    for _ in 0..2 {
+                        let off = Vec2::new(
+                            rng.random_range(-45.0..45.0),
+                            rng.random_range(-45.0..45.0),
+                        );
+                        spawn_enemy(&mut commands, EnemyKind::Limace, pos + off, 1.0, 1.0, false);
+                    }
+                    slug.state = LimaceState::Crawl;
+                    slug.timer = Timer::from_seconds(1.6, TimerMode::Once);
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 
@@ -536,7 +666,7 @@ impl Plugin for BossPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (araignee_ai, scorpion_ai, gromp_ai, glob_system)
+            (araignee_ai, scorpion_ai, gromp_ai, mega_limace_ai, glob_system)
                 .in_set(GameSet::Ai)
                 .run_if(combat_active),
         );
