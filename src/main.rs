@@ -7,7 +7,8 @@ mod common;
 mod speed;
 
 use bevy::prelude::*;
-use crate::common::{Arena, DamageMsg, GameState, RoomState};
+use crate::common::{Arena, DamageMsg, RoomState, GameState};
+use crate::entities::ui;
 
 fn main() {
     App::new()
@@ -19,6 +20,12 @@ fn main() {
         .add_plugins(entities::EntitiesPlugin)
         .insert_resource(Arena { half: Vec2::new(600.0, 400.0) })
         .add_message::<DamageMsg>()
-        .add_systems(Update, (common::move_velocity, common::update_lifetime))
+        .add_systems(Update, (common::move_velocity, common::update_lifetime).run_if(in_state(GameState::InGame)))
+        
+        // Affiche l'écran uniquement en entrant dans l'état GameOver
+        .add_systems(OnEnter(GameState::GameOver), ui::spawn_game_over_ui)
+
+        // Permet de restart uniquement si on est dans l'état GameOver
+        .add_systems(Update, ui::restart_game.run_if(in_state(GameState::GameOver)))
         .run();
 }

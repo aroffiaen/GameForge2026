@@ -62,7 +62,7 @@ pub fn spawn_boss_specialized(
         crate::mobs::components::AiState::Idle,
     )).id();
 
-    crate::entities::ui::spawn_health_bar(commands, boss_id, 60.0, false);
+    crate::entities::ui::spawn_health_bar(commands, boss_id, 60.0, true);
 
     match kind {
         BossKind::Araignee => {

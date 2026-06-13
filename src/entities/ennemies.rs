@@ -316,15 +316,16 @@ pub fn handle_damage(
 pub fn death_system(
     mut commands: Commands,
     query: Query<(Entity, &Health, Has<Player>)>,
-    mut next_state: ResMut<NextState<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>, // Permet de changer d'état
 ) {
     for (entity, health, is_player) in query.iter() {
         if health.hp <= 0 {
             if is_player {
-                warn!("💀 JOUEUR MORT ! Game Over.");
+                // bloquer jeu : declenche le game over au lieu de detruire le joueur
+                info!("💀 Le joueur est mort ! GAME OVER");
                 next_state.set(GameState::GameOver);
             } else {
-                info!("Entity {:?} is dead!", entity);
+                // detruire mob : comportement normal pour les ennemis
                 commands.entity(entity).despawn();
             }
         }
