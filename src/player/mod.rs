@@ -66,7 +66,6 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             Arms,
             Sprite {
                 image: asset_server.load(SPRITE_ARMS),
-                custom_size: Some(PLAYER_SIZE),
                 ..default()
             },
         ))
@@ -78,7 +77,6 @@ fn spawn_player(mut commands: Commands, asset_server: Res<AssetServer>) {
             ToggleTimer(Timer::from_seconds(0.7, TimerMode::Once)),
             Sprite {
                 image: asset_server.load(SPRITE_HAT1),
-                custom_size: Some(PLAYER_SIZE),
                 ..default()
             },
         ))

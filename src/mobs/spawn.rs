@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use super::components::{Mob, Boss, WaveManager, Biome};
 use crate::entities::ennemies::{def, EnemyKind};
-use crate::common::{Health, Enemy, ContactDmg, BaseColor, AiKind, ShootCd, RoomState, GameState};
+use crate::common::{Health, Enemy, ContactDmg, BaseColor, AiKind, ShootCd, RoomState, GameState, Velocity, LungeState};
 use rand::prelude::*;
 
 // Spawn d'une vague standard lors de l'entrée dans une salle de combat
@@ -41,6 +41,7 @@ pub fn setup_combat_room(
             Mob { kind },
             Health { hp: stats.hp as i32 },
             Enemy,
+            Velocity(Vec2::ZERO),
             ContactDmg(stats.dmg),
             BaseColor(stats.color),
             crate::mobs::components::AiState::Idle,
@@ -48,6 +49,15 @@ pub fn setup_combat_room(
 
         if let AiKind::Ranged { shoot_cd, .. } = stats.ai {
             entity_cmd.insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));
+        }
+        if let AiKind::Lunge = stats.ai {
+            let mut active_timer = Timer::from_seconds(0.3, TimerMode::Once);
+            active_timer.tick(std::time::Duration::from_secs(1)); 
+            entity_cmd.insert(LungeState {
+                cd: Timer::from_seconds(1.8, TimerMode::Once),
+                active: active_timer,
+                dir: Vec2::ZERO,
+            });
         }
     }
 }
@@ -80,6 +90,7 @@ pub fn setup_boss_room(
         Health { hp: (boss_stats.hp * 3.0) as i32 },
         Boss,
         Enemy,
+        Velocity(Vec2::ZERO),
         ContactDmg(boss_stats.dmg * 2.0),
         BaseColor(boss_stats.color),
         crate::mobs::components::AiState::Idle,
@@ -112,6 +123,7 @@ pub fn setup_boss_room(
             Mob { kind: minion_kind },
             Health { hp: minion_stats.hp as i32 },
             Enemy,
+            Velocity(Vec2::ZERO),
             ContactDmg(minion_stats.dmg),
             BaseColor(minion_stats.color),
             crate::mobs::components::AiState::Idle,
@@ -119,6 +131,15 @@ pub fn setup_boss_room(
 
         if let AiKind::Ranged { shoot_cd, .. } = minion_stats.ai {
             entity_cmd.insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));
+        }
+        if let AiKind::Lunge = minion_stats.ai {
+            let mut active_timer = Timer::from_seconds(0.3, TimerMode::Once);
+            active_timer.tick(std::time::Duration::from_secs(1)); 
+            entity_cmd.insert(LungeState {
+                cd: Timer::from_seconds(1.8, TimerMode::Once),
+                active: active_timer,
+                dir: Vec2::ZERO,
+            });
         }
     }
 }

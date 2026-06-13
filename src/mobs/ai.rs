@@ -1,125 +1,104 @@
 use bevy::prelude::*;
-use super::components::{Mob, AiState};
+use super::components::Mob;
 use crate::player::Player;
 use crate::entities::ennemies::def;
-use crate::common::AiKind;
+use crate::common::{AiKind, Velocity, LungeState, Slowed};
 
 pub fn mob_ai(
     time: Res<Time>, 
-    mut query_mobs: Query<(Entity, &Mob, &mut Transform, &mut AiState), Without<Player>>,
+    mut query_mobs: Query<(Entity, &Mob, &Transform, &mut Velocity, Option<&mut LungeState>, Has<Slowed>), Without<Player>>,
     query_player: Query<&Transform, With<Player>>,
 ) {
-    let mut target_pos = Vec3::ZERO;
+    let Ok(player_tf) = query_player.single() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    let dt = time.delta_secs();
 
-    for player_transform in query_player.iter() {
-        target_pos = player_transform.translation;
-    }
-
-    let mob_data: Vec<(Entity, Vec3, f32)> = query_mobs
+    // Calculer les evitements
+    let mob_data: Vec<(Entity, Vec2, f32)> = query_mobs
         .iter()
-        .map(|(entity, mob, transform, _)| {
-            (entity, transform.translation, def(mob.kind).radius)
+        .map(|(entity, mob, transform, _, _, _)| {
+            (entity, transform.translation.truncate(), def(mob.kind).radius)
         })
         .collect();
 
-    for (entity, mob, mut transform, mut ai_state) in query_mobs.iter_mut() {
+    for (entity, mob, tf, mut vel, mut lunge, slowed) in &mut query_mobs {
         let stats = def(mob.kind);
-        let position = transform.translation;
-        let diff_player = target_pos - position;
-        let dist_player = diff_player.length();
-        let mut direction = diff_player;
-
-        let mut current_speed = stats.speed;
-        let mut should_move = true;
-
-        match stats.ai {
-            AiKind::Chase => {
-                // Comportement standard, direction pointe vers le joueur
-            }
-            AiKind::Ranged { min, max, .. } => {
-                if dist_player < min {
-                    direction = -diff_player; // Fuit
-                } else if dist_player > max {
-                    // Poursuit
-                } else {
-                    should_move = false; // Reste à distance pour tirer
-                }
-            }
-            AiKind::Lunge => {
-                let dash_dir = diff_player.normalize_or_zero();
-                match *ai_state {
-                    AiState::Idle => {
-                        if dist_player < 150.0 {
-                            *ai_state = AiState::Charging { 
-                                timer: Timer::from_seconds(0.8, TimerMode::Once) 
-                            };
-                            should_move = false;
-                        }
-                    }
-                    AiState::Charging { ref mut timer } => {
-                        timer.tick(time.delta());
-                        should_move = false;
-                        if timer.just_finished() {
-                            *ai_state = AiState::Lunging { 
-                                timer: Timer::from_seconds(0.3, TimerMode::Once),
-                                direction: dash_dir,
-                            };
-                        }
-                    }
-                    AiState::Lunging { ref mut timer, direction: lunge_dir } => {
-                        timer.tick(time.delta());
-                        direction = lunge_dir;
-                        current_speed = stats.speed * 3.5;
-                        
-                        if timer.just_finished() {
-                            *ai_state = AiState::Idle;
-                        }
-                    }
-                }
-            }
+        let pos = tf.translation.truncate();
+        let to_player = player_pos - pos;
+        let dist = to_player.length();
+        let dir = to_player.normalize_or_zero();
+        
+        let mut max_speed = stats.speed;
+        if slowed {
+            max_speed *= 0.45;
         }
 
-        let mut separation = Vec3::ZERO;
+        let mut is_lunging_now = false;
 
-        for (_other_entity, other_pos, _other_radius) in &mob_data {
+        let target_vel = match stats.ai {
+            AiKind::Chase => dir * max_speed,
+            AiKind::Lunge => {
+                if let Some(mut lunge) = lunge {
+                    lunge.cd.tick(time.delta());
+                    lunge.active.tick(time.delta());
+                    if !lunge.active.is_finished() {
+                        is_lunging_now = true;
+                        lunge.dir * max_speed * 2.6
+                    } else if lunge.cd.is_finished() && dist < 220.0 {
+                        lunge.dir = dir;
+                        lunge.active.reset();
+                        lunge.cd = Timer::from_seconds(1.8, TimerMode::Once);
+                        is_lunging_now = true;
+                        dir * max_speed * 2.6
+                    } else {
+                        dir * max_speed
+                    }
+                } else {
+                    dir * max_speed
+                }
+            }
+            AiKind::Ranged { min, max: band_max, .. } => {
+                if dist < min {
+                    -dir * max_speed
+                } else if dist > band_max {
+                    dir * max_speed
+                } else {
+                    // Strafe perpendiculaire pour rester vivant.
+                    Vec2::new(-dir.y, dir.x) * max_speed * 0.6
+                }
+            }
+        };
+
+        // --- LOGIQUE DE SÉPARATION (Anti-chevauchement) ---
+        let mut separation = Vec2::ZERO;
+
+        for (_other_entity, other_pos, other_radius) in &mob_data {
             if entity == *_other_entity { continue; }
 
-            let diff = position - *other_pos;
-            let distance = diff.length();
-            let safe_dist = 45.0;
+            let diff = pos - *other_pos;
+            let distance_mobs = diff.length();
+            let safe_dist = stats.radius + *other_radius + 10.0;
 
-            if distance < safe_dist && distance > 0.0 {
-                let strength = (safe_dist - distance).powi(2) / safe_dist;
+            if distance_mobs < safe_dist && distance_mobs > 0.0 {
+                let strength = (safe_dist - distance_mobs).powi(2) / safe_dist;
                 separation += diff.normalize() * strength;
             }
         }
 
-        if let AiState::Lunging { .. } = *ai_state {
-            // Traverse partiellement le joueur en chargeant
-        } else {
-            // Distance de sécurité dynamique : rayon du mob + nouveau rayon du joueur (48.0) + petite marge
-            let player_safe_dist = stats.radius + 48.0 + 5.0; 
-            if dist_player < player_safe_dist && dist_player > 0.0 {
-                let strength = (player_safe_dist - dist_player).powi(2) / player_safe_dist;
-                // diff_player pointe VERS le joueur, on soustrait pour être REPOUSSÉ
-                separation -= diff_player.normalize() * strength * 3.0; 
+        if !is_lunging_now {
+            let player_safe_dist = stats.radius + 48.0 + 5.0; // Rayon du joueur à 48.0
+            if dist < player_safe_dist && dist > 0.0 {
+                let strength = (player_safe_dist - dist).powi(2) / player_safe_dist;
+                separation -= dir * strength * 3.0; // dir pointe vers le joueur, on soustrait
             }
         }
 
-        if should_move {
-            if direction.length() > 0.0 {
-                direction = direction.normalize();
-            }
+        // Appliquer la séparation à la vélocité cible
+        let final_target = target_vel + separation * 0.8;
 
-            let final_move = direction + separation * 0.8;
-
-            if final_move.length() > 0.0 {
-                let velocity = final_move.normalize() * current_speed * time.delta_secs();
-                transform.translation += velocity;
-            }
-        } else if separation.length() > 0.0 {
-             let velocity = separation.normalize() * (stats.speed * 0.5) * time.delta_secs();
-             transform.translation += velocity;
-        }
+        // Interpolation douce (smooth movement)
+        vel.0 = vel.0.move_towards(final_target, 700.0 * dt);
     }
 }

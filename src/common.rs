@@ -16,6 +16,16 @@ pub struct BaseColor(pub Color);
 pub struct Poisoned;
 
 #[derive(Component)]
+pub struct Slowed;
+
+#[derive(Component)]
+pub struct LungeState {
+    pub cd: Timer,
+    pub active: Timer,
+    pub dir: Vec2,
+}
+
+#[derive(Component)]
 pub struct HitFlash(#[allow(dead_code)] pub Timer);
 
 #[derive(Clone, Copy, Debug)]
