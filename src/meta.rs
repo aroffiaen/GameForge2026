@@ -1,0 +1,230 @@
+//! Méta-progression : Pattes, accomplissements, déblocages chez le bousier
+//! (GDD §11). Sauvegarde RON locale (`save.ron`).
+
+use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
+
+use crate::common::*;
+use crate::weapons::WeaponKind;
+
+pub const SAVE_PATH: &str = "save.ron";
+
+// ---------------------------------------------------------------------------
+// Sauvegarde
+// ---------------------------------------------------------------------------
+
+#[derive(Resource, Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct MetaSave {
+    /// La monnaie unique : des pattes d'insectes (GDD §11.2).
+    pub pattes: u64,
+    pub total_kills: u64,
+    /// Outils récupérés, donc jouables.
+    pub unlocked: Vec<WeaponKind>,
+    /// Accomplissement validé : l'outil attend d'être racheté au bousier.
+    pub claimable: Vec<WeaponKind>,
+    pub achievements: Vec<String>,
+    /// Biomes dont le boss a été battu au moins une fois.
+    pub bosses_beaten: Vec<String>,
+    // Upgrades permanents (rangs achetés).
+    pub up_hp: u8,
+    pub up_speed: u8,
+    pub up_dash: u8,
+    pub up_pattes: u8,
+    pub terrasse_unlocked: bool,
+    pub best_terrasse: f32,
+    pub runs: u32,
+    pub deaths: u32,
+    /// Throttle : max 2 outils récupérés par run (GDD §11.3).
+    pub tools_bought_this_cycle: u8,
+}
+
+impl Default for MetaSave {
+    fn default() -> Self {
+        Self {
+            pattes: 0,
+            total_kills: 0,
+            unlocked: vec![WeaponKind::Poings],
+            claimable: Vec::new(),
+            achievements: Vec::new(),
+            bosses_beaten: Vec::new(),
+            up_hp: 0,
+            up_speed: 0,
+            up_dash: 0,
+            up_pattes: 0,
+            terrasse_unlocked: false,
+            best_terrasse: 0.0,
+            runs: 0,
+            deaths: 0,
+            tools_bought_this_cycle: 0,
+        }
+    }
+}
+
+impl MetaSave {
+    pub fn has_ach(&self, id: &str) -> bool {
+        self.achievements.iter().any(|a| a == id)
+    }
+    pub fn add_ach(&mut self, id: &str) {
+        if !self.has_ach(id) {
+            self.achievements.push(id.to_string());
+        }
+    }
+    pub fn is_unlocked(&self, w: WeaponKind) -> bool {
+        self.unlocked.contains(&w)
+    }
+    pub fn is_claimable(&self, w: WeaponKind) -> bool {
+        self.claimable.contains(&w)
+    }
+    pub fn make_claimable(&mut self, w: WeaponKind) -> bool {
+        if self.is_unlocked(w) || self.is_claimable(w) {
+            return false;
+        }
+        self.claimable.push(w);
+        true
+    }
+}
+
+pub fn load_meta() -> MetaSave {
+    match std::fs::read_to_string(SAVE_PATH) {
+        Ok(content) => ron::from_str(&content).unwrap_or_else(|err| {
+            warn!("save.ron illisible ({err}), on repart de zéro");
+            MetaSave::default()
+        }),
+        Err(_) => MetaSave::default(),
+    }
+}
+
+pub fn save_meta(meta: &MetaSave) {
+    match ron::ser::to_string_pretty(meta, ron::ser::PrettyConfig::default()) {
+        Ok(s) => {
+            if let Err(err) = std::fs::write(SAVE_PATH, s) {
+                warn!("Impossible d'écrire {SAVE_PATH}: {err}");
+            }
+        }
+        Err(err) => warn!("Sérialisation de la sauvegarde impossible: {err}"),
+    }
+}
+
+/// Prix de rachat des outils chez le bousier (GDD §11.3).
+pub fn tool_price(w: WeaponKind) -> u64 {
+    match w {
+        WeaponKind::Poings => 0,
+        WeaponKind::PetitePelle => 60,
+        WeaponKind::Arrosoir => 100,
+        WeaponKind::Rateau => 140,
+        WeaponKind::Pelle => 180,
+        WeaponKind::Karcher => 220,
+    }
+}
+
+/// Condition d'accomplissement qui rend l'outil récupérable.
+pub fn tool_condition(w: WeaponKind) -> &'static str {
+    match w {
+        WeaponKind::Poings => "Tes poings. Toujours là pour toi.",
+        WeaponKind::PetitePelle => "Bats ton premier boss.",
+        WeaponKind::Arrosoir => "Dézingue 100 insectes (en cumulé).",
+        WeaponKind::Rateau => "Bats 2 boss dans la même run.",
+        WeaponKind::Pelle => "Bats le boss des 3 biomes (au moins une fois chacun).",
+        WeaponKind::Karcher => "Atteins la Terrasse.",
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Plugin : moteur d'accomplissements
+// ---------------------------------------------------------------------------
+
+pub struct MetaPlugin;
+
+impl Plugin for MetaPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(load_meta())
+            .add_systems(Update, achievements_engine)
+            .add_systems(OnEnter(AppState::Terrasse), terrasse_reached);
+    }
+}
+
+/// Écoute les morts d'ennemis et déverrouille la « récupérabilité » des
+/// outils (modèle accomplissements + achats, GDD §11.3).
+fn achievements_engine(
+    mut died: MessageReader<EnemyDied>,
+    mut meta: ResMut<MetaSave>,
+    stats: Res<RunStats>,
+    run: Res<crate::rooms::RunState>,
+    mut toasts: MessageWriter<ToastMsg>,
+) {
+    let mut changed = false;
+    for msg in died.read() {
+        meta.total_kills += 1;
+
+        // Arrosoir : 100 insectes au compteur.
+        if meta.total_kills >= 100 && !meta.has_ach("kills_100") {
+            meta.add_ach("kills_100");
+            if meta.make_claimable(WeaponKind::Arrosoir) {
+                toasts.write(ToastMsg(
+                    "100 insectes ! Le bousier veut bien te revendre l'ARROSOIR.".into(),
+                ));
+            }
+            changed = true;
+        }
+
+        if msg.was_boss {
+            // Petite pelle : premier boss.
+            if !meta.has_ach("first_boss") {
+                meta.add_ach("first_boss");
+                if meta.make_claimable(WeaponKind::PetitePelle) {
+                    toasts.write(ToastMsg(
+                        "Premier boss ! La PETITE PELLE est récupérable au cabanon.".into(),
+                    ));
+                }
+            }
+            // Râteau : 2 boss dans la même run (stats.bosses est incrémenté
+            // par la salle de boss juste après ce message ; on compte donc +1).
+            if stats.bosses + 1 >= 2 && !meta.has_ach("two_boss_run") {
+                meta.add_ach("two_boss_run");
+                if meta.make_claimable(WeaponKind::Rateau) {
+                    toasts.write(ToastMsg(
+                        "2 boss dans la même run ! Le RÂTEAU est récupérable.".into(),
+                    ));
+                }
+            }
+            // Pelle : les 3 boss des 3 biomes, en cumulé.
+            let biome_id = run.biome.id().to_string();
+            if !meta.bosses_beaten.contains(&biome_id) {
+                meta.bosses_beaten.push(biome_id);
+            }
+            if meta.bosses_beaten.len() >= 3 && !meta.has_ach("all_bosses") {
+                meta.add_ach("all_bosses");
+                if meta.make_claimable(WeaponKind::Pelle) {
+                    toasts.write(ToastMsg(
+                        "Les 3 boss du jardin matés ! La PELLE est récupérable.".into(),
+                    ));
+                }
+            }
+            changed = true;
+        }
+    }
+    if changed {
+        save_meta(&meta);
+    }
+}
+
+/// Atteindre la terrasse via une run : accomplissement du Karcher.
+fn terrasse_reached(
+    run: Res<crate::rooms::RunState>,
+    mut meta: ResMut<MetaSave>,
+    mut toasts: MessageWriter<ToastMsg>,
+) {
+    if !run.came_from_run {
+        return;
+    }
+    if !meta.has_ach("terrasse") {
+        meta.add_ach("terrasse");
+        if meta.make_claimable(WeaponKind::Karcher) {
+            toasts.write(ToastMsg(
+                "LA TERRASSE ! Le KARCHER est récupérable au cabanon.".into(),
+            ));
+        }
+        save_meta(&meta);
+    }
+}

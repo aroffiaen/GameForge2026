@@ -1,0 +1,33 @@
+(
+    pattes: 117,
+    total_kills: 286,
+    unlocked: [
+        Poings,
+        Arrosoir,
+        PetitePelle,
+    ],
+    claimable: [
+        Rateau,
+        Pelle,
+    ],
+    achievements: [
+        "kills_100",
+        "first_boss",
+        "two_boss_run",
+        "all_bosses",
+    ],
+    bosses_beaten: [
+        "plaine",
+        "savane",
+        "jungle",
+    ],
+    up_hp: 1,
+    up_speed: 1,
+    up_dash: 0,
+    up_pattes: 0,
+    terrasse_unlocked: false,
+    best_terrasse: 0.0,
+    runs: 15,
+    deaths: 14,
+    tools_bought_this_cycle: 0,
+)

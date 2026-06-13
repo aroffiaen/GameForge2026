@@ -25,3 +25,7 @@ target
 
 /target
 Cargo.lock
+
+
+# Claude
+.claude/
