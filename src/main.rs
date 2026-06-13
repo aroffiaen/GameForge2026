@@ -1,7 +1,10 @@
+mod collectible;
+mod modifier;
 mod player;
 mod mobs;
 mod entities;
 mod common;
+mod speed;
 
 use bevy::prelude::*;
 use crate::common::{Arena, DamageMsg, GameState, RoomState};
