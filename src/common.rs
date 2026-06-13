@@ -67,6 +67,9 @@ pub struct Arena {
     pub half: Vec2,
 }
 
+#[derive(Resource, Default)]
+pub struct Paused(pub bool);
+
 #[derive(Component)]
 pub struct Untouchable;
 
