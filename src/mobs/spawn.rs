@@ -11,8 +11,8 @@ pub fn spawn_wave_system(
 ) {
     let mob_count_remaining = query_mobs.iter().count();
 
-    // declencher vague : si presque plus de sbires et vague <= 3
-    if mob_count_remaining <= 3 && wave_manager.current_wave <= 3 {
+    // declencher vague : si presque plus de sbires et vague <= 5
+    if mob_count_remaining <= 5 && wave_manager.current_wave <= 5 {
         let mut rng = rand::rng();
 
         // determiner liste ennemis : selon le biome actuel
@@ -54,8 +54,8 @@ pub fn spawn_wave_system(
                 entity_cmd.insert(ShootCd(Timer::from_seconds(shoot_cd, TimerMode::Once)));
             }
         }
-        // spawn boss : seulement a la vague 3
-        if wave_manager.current_wave == 3 {
+        // spawn boss : seulement a la vague 5
+        if wave_manager.current_wave == 5 {
             let angle = rng.random_range(0.0..std::f32::consts::TAU);
             let distance = 500.0;
             let x = angle.cos() * distance;
@@ -84,7 +84,7 @@ pub fn spawn_wave_system(
                 BaseColor(boss_stats.color),
                 crate::mobs::components::AiState::Idle,
             ));
-            info!("VAGUE 3 [{:?}] : LE BOSS {:?} APPARAIT !", wave_manager.current_biome, boss_kind);
+            info!("VAGUE 5 [{:?}] : LE BOSS {:?} APPARAIT !", wave_manager.current_biome, boss_kind);
         } else {
             info!("VAGUE {} [{:?}] LANCEE (Type: {:?})", wave_manager.current_wave, wave_manager.current_biome, kind);
         }
