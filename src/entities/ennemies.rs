@@ -315,12 +315,18 @@ pub fn handle_damage(
 // gestion de la mort (despawn à 0 HP)
 pub fn death_system(
     mut commands: Commands,
-    query: Query<(Entity, &Health)>,
+    query: Query<(Entity, &Health, Has<Player>)>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
-    for (entity, health) in query.iter() {
+    for (entity, health, is_player) in query.iter() {
         if health.hp <= 0 {
-            info!("Entity {:?} is dead!", entity);
-            commands.entity(entity).despawn();
+            if is_player {
+                warn!("💀 JOUEUR MORT ! Game Over.");
+                next_state.set(GameState::GameOver);
+            } else {
+                info!("Entity {:?} is dead!", entity);
+                commands.entity(entity).despawn();
+            }
         }
     }
 }
