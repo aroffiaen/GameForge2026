@@ -11,10 +11,13 @@ use crate::player::PlayerStats;
 // Constantes de design (GDD §3)
 // ---------------------------------------------------------------------------
 
-/// Multiplicateur de dégâts à l'arrêt (GDD §3.1).
-pub const MULT_MIN: f32 = 0.5;
-/// Multiplicateur de dégâts à pleine vitesse (GDD §3.1).
-pub const MULT_MAX: f32 = 2.5;
+/// Modèle « flat » (GDD §3.1) : la vitesse réelle (px/s) divisée par cette
+/// valeur donne le multiplicateur de dégâts. 100 px/s = ×1.0, 250 px/s = ×2.5.
+/// Comme le calcul part de la vitesse absolue, chaque bonus de vitesse relève
+/// AUSSI le plafond de dégâts atteignable.
+pub const SPEED_PER_MULT: f32 = 100.0;
+/// Plancher du multiplicateur quand le joueur est (quasi) immobile.
+pub const DMG_MULT_MIN: f32 = 0.4;
 pub const PLAYER_RADIUS: f32 = 12.0;
 
 // ---------------------------------------------------------------------------
@@ -192,6 +195,23 @@ pub struct HitFlash(pub Timer);
 // ---------------------------------------------------------------------------
 // Ressources
 // ---------------------------------------------------------------------------
+
+/// Handles des sprites chargés une fois au démarrage.
+#[derive(Resource)]
+pub struct GameSprites {
+    /// Jambes : 2 frames de marche (alternées).
+    pub legs_walk: [Handle<Image>; 2],
+    /// Jambes : pose de dash.
+    pub legs_dash: Handle<Image>,
+    /// Bras (couche du milieu, orientée vers la visée).
+    pub arms: Handle<Image>,
+    /// Chapeau (couche du haut, teintée).
+    pub body: Handle<Image>,
+    /// Le bousier (PNJ du cabanon).
+    pub bousier: Handle<Image>,
+    /// Sprite de la pelle (arme).
+    pub pelle: Handle<Image>,
+}
 
 /// Demi-dimensions de l'arène courante.
 #[derive(Resource)]

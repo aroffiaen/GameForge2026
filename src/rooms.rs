@@ -117,6 +117,7 @@ impl Plugin for RoomsPlugin {
 
 fn start_run(
     mut commands: Commands,
+    sprites: Res<GameSprites>,
     mut run: ResMut<RunState>,
     mut stats: ResMut<RunStats>,
     mut augments: ResMut<Augments>,
@@ -143,7 +144,7 @@ fn start_run(
     arena.half = Vec2::new(550.0, 310.0);
 
     let stats_now = PlayerStats::compute(&meta, &Augments::default());
-    let player = spawn_player(&mut commands, &stats_now, Vec2::new(0.0, -240.0));
+    let player = spawn_player(&mut commands, &sprites, &stats_now, Vec2::new(0.0, -240.0));
     commands.entity(player).insert(DespawnOnExit(AppState::EnRun));
 
     build.write(BuildRoom);

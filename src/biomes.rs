@@ -75,9 +75,9 @@ impl Biome {
 
     pub fn boss(self) -> BossKind {
         match self {
-            Biome::Plaine => BossKind::Taupe,
-            Biome::Savane => BossKind::Frelon,
-            Biome::Jungle => BossKind::Crapaud,
+            Biome::Plaine => BossKind::Araignee,
+            Biome::Savane => BossKind::Scorpion,
+            Biome::Jungle => BossKind::Gromp,
         }
     }
 

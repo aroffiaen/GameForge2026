@@ -77,7 +77,7 @@ struct ShopItem {
 fn upgrade_info(u: Upgrade, meta: &MetaSave) -> (u8, &'static [u64], String) {
     match u {
         Upgrade::Hp => (meta.up_hp, &[40, 90, 160], "PV max +8".into()),
-        Upgrade::Speed => (meta.up_speed, &[50, 110, 190], "Vitesse +4 %".into()),
+        Upgrade::Speed => (meta.up_speed, &[50, 110, 190], "Vitesse +5 %".into()),
         Upgrade::Dash => (meta.up_dash, &[80, 160], "Recharge du dash -10 %".into()),
         Upgrade::Pattes => (meta.up_pattes, &[60, 130], "Gain de pattes +15 %".into()),
     }
@@ -141,6 +141,7 @@ impl Plugin for CabanonPlugin {
 fn enter_cabanon(
     mut commands: Commands,
     meta: Res<MetaSave>,
+    sprites: Res<GameSprites>,
     mut loadout: ResMut<Loadout>,
     mut overlay: ResMut<HubOverlay>,
     mut arena: ResMut<Arena>,
@@ -167,7 +168,7 @@ fn enter_cabanon(
     }
 
     let stats = PlayerStats::compute(&meta, &crate::augments::Augments::default());
-    let player = spawn_player(&mut commands, &stats, Vec2::new(-60.0, -60.0));
+    let player = spawn_player(&mut commands, &sprites, &stats, Vec2::new(-60.0, -60.0));
     commands
         .entity(player)
         .insert(DespawnOnExit(AppState::Cabanon));
@@ -201,21 +202,19 @@ fn enter_cabanon(
     let mut rng = rand::rng();
     let quip = QUIPS.choose(&mut rng).copied().unwrap_or(QUIPS[0]);
 
-    // Le bousier et sa (future) boule de pattes.
+    // Le bousier (sprite : scarabée poussant sa boule de pattes).
     commands
         .spawn((
             DespawnOnExit(AppState::Cabanon),
             Interactable { kind: InteractKind::Bousier, radius: 60.0 },
-            Sprite::from_color(Color::srgb(0.35, 0.22, 0.12), Vec2::new(26.0, 20.0)),
+            Sprite {
+                image: sprites.bousier.clone(),
+                custom_size: Some(Vec2::splat(52.0)),
+                ..default()
+            },
             Transform::from_xyz(150.0, 30.0, 4.0),
         ))
         .with_children(|p| {
-            // La boule de pattes grossit avec la fortune du bousier.
-            let ball = 12.0 + (meta.pattes as f32).sqrt().min(26.0);
-            p.spawn((
-                Sprite::from_color(Color::srgb(0.6, 0.55, 0.4), Vec2::splat(ball)),
-                Transform::from_xyz(24.0, 4.0, -1.0).with_rotation(Quat::from_rotation_z(0.6)),
-            ));
             p.spawn((
                 Text2d::new(format!("Le Bousier\n« {quip} »")),
                 TextFont { font_size: 12.0, ..default() },

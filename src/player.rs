@@ -9,8 +9,10 @@ use crate::common::*;
 use crate::meta::MetaSave;
 use crate::weapons::DamageMsgExt;
 
-pub const DASH_SPEED: f32 = 950.0;
-pub const DASH_DURATION: f32 = 0.18;
+// Dash court et net : une esquive de distance fixe (~100 px), pas un long
+// burst de vitesse. La sur-vitesse résiduelle se résorbe vite (cf. movement).
+pub const DASH_SPEED: f32 = 640.0;
+pub const DASH_DURATION: f32 = 0.16;
 
 // ---------------------------------------------------------------------------
 // Ressources
@@ -43,10 +45,15 @@ impl PlayerStats {
     pub fn compute(meta: &MetaSave, augments: &Augments) -> Self {
         let speed_stacks = augments.count(Augment::JambesDeCriquet) as f32;
         Self {
-            max_speed: 330.0
-                * (1.0 + 0.04 * meta.up_speed as f32)
+            // Vitesse de pointe : 250 px/s par défaut → ×2.5 de dégâts au max
+            // (cf. SPEED_PER_MULT). Chaque bonus de vitesse relève donc aussi
+            // le plafond de dégâts.
+            max_speed: 250.0
+                * (1.0 + 0.05 * meta.up_speed as f32)
                 * (1.0 + 0.15 * speed_stacks),
-            accel: 2600.0 * if augments.has(Augment::Cafeine) { 1.3 } else { 1.0 },
+            // Montée en régime progressive (~0.3 s pour atteindre la pointe) :
+            // il faut s'engager dans le mouvement pour gagner sa vitesse.
+            accel: 850.0 * if augments.has(Augment::Cafeine) { 1.4 } else { 1.0 },
             max_hp: 50.0
                 + 8.0 * meta.up_hp as f32
                 + 15.0 * augments.count(Augment::Carapace) as f32,
@@ -114,6 +121,33 @@ struct TrailGhost;
 #[derive(Resource)]
 struct TrailTimer(Timer);
 
+/// Couche du bas : les jambes, orientées vers le déplacement, animées.
+#[derive(Component)]
+struct PlayerLegs {
+    anim: Timer,
+    frame: usize,
+}
+
+/// Couche du milieu : les bras, qui tiennent les armes (orientés vers la visée).
+#[derive(Component)]
+struct PlayerArms;
+
+/// Couche du haut : le chapeau, teinté (i-frames dash → bleu, dégâts → rouge).
+#[derive(Component)]
+struct PlayerBody;
+
+/// Marqueur : cette couche s'oriente vers la visée (souris).
+#[derive(Component)]
+struct AimOriented;
+
+/// Échelle de rendu (unités monde par pixel source). Un seul réglage pour
+/// toutes les couches → elles restent à la même échelle et alignées.
+const PLAYER_SCALE: f32 = 0.8;
+/// Jambes et bras sont dessinés sur un canvas 54×54.
+const LIMB_SIZE: f32 = 54.0 * PLAYER_SCALE;
+/// Le chapeau (jardinier.png) est un canvas 32×32, centré.
+const HAT_SIZE: f32 = 32.0 * PLAYER_SCALE;
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -139,7 +173,15 @@ impl Plugin for PlayerPlugin {
             )
             .add_systems(
                 Update,
-                (speed_feedback, tick_iframes, momentum_system, photosynthese)
+                (
+                    speed_feedback,
+                    tick_iframes,
+                    animate_legs,
+                    orient_body,
+                    tint_body,
+                    momentum_system,
+                    photosynthese,
+                )
                     .in_set(GameSet::Post)
                     .run_if(player_active),
             );
@@ -150,16 +192,24 @@ impl Plugin for PlayerPlugin {
 // Spawn
 // ---------------------------------------------------------------------------
 
-/// Fait apparaître le jardinier. Le sprite des armes est séparé (GDD §4.1) :
-/// deux enfants `WeaponSprite` sont mis à jour par le module `weapons`.
-pub fn spawn_player(commands: &mut Commands, stats: &PlayerStats, pos: Vec2) -> Entity {
-    let body_color = Color::srgb(0.45, 0.78, 0.42);
+/// Fait apparaître le jardinier en 3 couches superposées (GDD §13) :
+/// 1. jambes (bas) — orientées vers le déplacement, animées ;
+/// 2. bras (milieu) — orientés vers la visée, tiennent les armes ;
+/// 3. sprites d'armes — un par slot, séparés (GDD §4.1) ;
+/// 4. chapeau (haut) — orienté vers la visée, teinté.
+pub fn spawn_player(
+    commands: &mut Commands,
+    sprites: &GameSprites,
+    stats: &PlayerStats,
+    pos: Vec2,
+) -> Entity {
+    let limb = Vec2::splat(LIMB_SIZE);
+    let hat = Vec2::splat(HAT_SIZE);
     commands
         .spawn((
             Player,
-            Sprite::from_color(body_color, Vec2::splat(22.0)),
-            BaseColor(body_color),
             Transform::from_translation(pos.extend(10.0)),
+            Visibility::Visible,
             Velocity::default(),
             Knockback::default(),
             Health::new(stats.max_hp),
@@ -176,21 +226,51 @@ pub fn spawn_player(commands: &mut Commands, stats: &PlayerStats, pos: Vec2) -> 
             },
         ))
         .with_children(|parent| {
-            // Chapeau de paille du jardinier.
+            // Couche 1 — jambes (sous tout le reste), orientées vers la marche.
             parent.spawn((
-                Sprite::from_color(Color::srgb(0.85, 0.7, 0.35), Vec2::new(18.0, 7.0)),
-                Transform::from_xyz(0.0, 9.0, 1.0),
+                PlayerLegs {
+                    anim: Timer::from_seconds(0.15, TimerMode::Repeating),
+                    frame: 0,
+                },
+                Sprite {
+                    image: sprites.legs_walk[0].clone(),
+                    custom_size: Some(limb),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, -1.0),
             ));
-            // Slots d'armes : sprites séparés, orientés vers la visée.
+            // Couche 2 — bras (centrés), orientés vers la visée.
+            parent.spawn((
+                PlayerArms,
+                AimOriented,
+                Sprite {
+                    image: sprites.arms.clone(),
+                    custom_size: Some(limb),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, 0.0),
+            ));
+            // Couche 3 — slots d'armes (formes colorées), tenus par les bras.
             parent.spawn((
                 crate::weapons::WeaponSprite(0),
                 Sprite::from_color(Color::NONE, Vec2::new(4.0, 4.0)),
-                Transform::from_xyz(14.0, 6.0, 2.0),
+                Transform::from_xyz(0.0, 0.0, 0.5),
             ));
             parent.spawn((
                 crate::weapons::WeaponSprite(1),
                 Sprite::from_color(Color::NONE, Vec2::new(4.0, 4.0)),
-                Transform::from_xyz(14.0, -6.0, 2.0),
+                Transform::from_xyz(0.0, 0.0, 0.5),
+            ));
+            // Couche 4 — chapeau (au-dessus), orienté vers la visée, teinté.
+            parent.spawn((
+                PlayerBody,
+                AimOriented,
+                Sprite {
+                    image: sprites.body.clone(),
+                    custom_size: Some(hat),
+                    ..default()
+                },
+                Transform::from_xyz(0.0, 0.0, 1.0),
             ));
         })
         .id()
@@ -276,10 +356,40 @@ fn movement(
     if augments.has(Augment::Adrenaline) && health.ratio() < 0.3 {
         max *= 1.25;
     }
-    let target = dir.normalize_or_zero() * max;
-    // Décélération plus franche que l'accélération : perso nerveux.
-    let rate = if dir == Vec2::ZERO { stats.accel * 1.6 } else { stats.accel };
-    vel.0 = vel.0.move_towards(target, rate * time.delta_secs());
+    let dt = time.delta_secs();
+    let dir = dir.normalize_or_zero();
+    let cur_speed = vel.0.length();
+
+    if dir == Vec2::ZERO {
+        // Pas d'input : on freine en conservant la direction. Le freinage est
+        // plus vif que l'accélération → s'arrêter coûte de la vitesse (donc des
+        // dégâts), ce qui pousse à rester en mouvement.
+        let new_speed = (cur_speed - stats.accel * 2.0 * dt).max(0.0);
+        vel.0 = if cur_speed > 0.001 {
+            vel.0 / cur_speed * new_speed
+        } else {
+            Vec2::ZERO
+        };
+    } else {
+        // Avec input : on sépare la MAGNITUDE (qui monte vers `max`, ou
+        // redescend si on sort d'un dash en sur-vitesse) du CAP de direction
+        // (qui pivote vers l'input). Conséquence clé : tourner ne fait (presque)
+        // pas perdre de vitesse — on garde son élan en changeant d'angle.
+        let target_speed = if cur_speed > max {
+            (cur_speed - stats.accel * 2.5 * dt).max(max) // résorbe la sur-vitesse du dash
+        } else {
+            (cur_speed + stats.accel * dt).min(max)
+        };
+        let cur_dir = if cur_speed > 0.001 {
+            vel.0 / cur_speed
+        } else {
+            dir
+        };
+        // Pivot rapide mais continu vers la direction visée.
+        let turn = (14.0 * dt).min(1.0);
+        let new_dir = cur_dir.lerp(dir, turn).normalize_or(dir);
+        vel.0 = new_dir * target_speed;
+    }
 }
 
 fn dash_system(
@@ -355,63 +465,142 @@ fn dash_system(
 fn update_speed_info(
     stats: Res<PlayerStats>,
     mut info: ResMut<SpeedInfo>,
-    player: Query<(&Velocity, &Dash), With<Player>>,
+    player: Query<&Velocity, With<Player>>,
 ) {
-    let Ok((vel, dash)) = player.single() else {
+    let Ok(vel) = player.single() else {
         return;
     };
-    let ratio = if dash.dashing() {
-        1.0
-    } else {
-        (vel.0.length() / stats.max_speed).clamp(0.0, 1.0)
-    };
-    info.ratio = ratio;
-    info.mult = MULT_MIN + (MULT_MAX - MULT_MIN) * ratio;
+    let speed_len = vel.0.length();
+    // `ratio` (0..1) ne sert qu'au feedback visuel (teinte/traînée/HUD).
+    info.ratio = (speed_len / stats.max_speed).clamp(0.0, 1.0);
+    // Modèle flat : mult = vitesse / SPEED_PER_MULT. On plafonne la vitesse
+    // effective à `max_speed` pour que le dash (sur-vitesse) ne donne pas un
+    // multiplicateur absurde — il octroie pile le mult de pointe.
+    let eff = speed_len.min(stats.max_speed);
+    info.mult = (eff / SPEED_PER_MULT).max(DMG_MULT_MIN);
 }
 
-/// Feedback visuel de la vitesse : teinte qui chauffe + traînée de fantômes.
+/// Feedback visuel de la vitesse : traînée de fantômes du chapeau quand on file.
 /// « Indispensable pour que le joueur ressente sa puissance » (GDD §3.1).
 fn speed_feedback(
     time: Res<Time>,
     info: Res<SpeedInfo>,
+    sprites: Res<GameSprites>,
     mut trail: ResMut<TrailTimer>,
     mut commands: Commands,
-    mut player: Query<(&Transform, &mut Sprite, &BaseColor, Has<HitFlash>), With<Player>>,
+    player: Query<&Transform, With<Player>>,
 ) {
-    let Ok((tf, mut sprite, base, flashing)) = player.single_mut() else {
+    let Ok(tf) = player.single() else {
         return;
     };
-    let hot = Color::srgb(1.0, 0.55, 0.15);
-    if !flashing {
-        sprite.color = base.0.mix(&hot, info.ratio * 0.8);
-    }
     trail.0.tick(time.delta());
     if info.ratio > 0.55 && trail.0.just_finished() {
-        let alpha = 0.12 + 0.25 * info.ratio;
+        let alpha = 0.15 + 0.3 * info.ratio;
         commands.spawn((
             TrailGhost,
-            Sprite::from_color(hot.with_alpha(alpha), Vec2::splat(20.0)),
-            Transform::from_translation(tf.translation - Vec3::Z),
+            Sprite {
+                image: sprites.body.clone(),
+                custom_size: Some(Vec2::splat(HAT_SIZE)),
+                color: Color::srgb(1.0, 0.6, 0.25).with_alpha(alpha),
+                ..default()
+            },
+            Transform::from_translation(tf.translation - Vec3::Z * 2.0),
             Lifetime::secs(0.28),
         ));
     }
 }
 
-fn tick_iframes(
+/// Fait juste avancer le timer d'i-frames (le visuel est dans `tint_body`).
+fn tick_iframes(time: Res<Time>, mut player: Query<&mut Iframes, With<Player>>) {
+    if let Ok(mut iframes) = player.single_mut() {
+        iframes.0.tick(time.delta());
+    }
+}
+
+/// Couche 1 : oriente les jambes vers le déplacement et anime la marche
+/// (alternance des 2 frames), pose de dash pendant le dash.
+fn animate_legs(
     time: Res<Time>,
-    mut player: Query<(&mut Iframes, &mut Sprite, &BaseColor, &Dash), With<Player>>,
+    sprites: Res<GameSprites>,
+    player: Query<(&Velocity, &Dash), With<Player>>,
+    mut legs: Query<(&mut PlayerLegs, &mut Sprite, &mut Transform)>,
 ) {
-    let Ok((mut iframes, mut sprite, _base, dash)) = player.single_mut() else {
+    let Ok((vel, dash)) = player.single() else {
         return;
     };
-    iframes.0.tick(time.delta());
-    // Clignote pendant les i-frames hors dash (pendant le dash, la vitesse parle).
-    if !iframes.0.is_finished() && !dash.dashing() {
-        let blink = (iframes.0.elapsed_secs() * 30.0).sin() > 0.0;
-        let alpha = if blink { 0.35 } else { 0.9 };
-        sprite.color = sprite.color.with_alpha(alpha);
+    let Ok((mut state, mut sprite, mut tf)) = legs.single_mut() else {
+        return;
+    };
+    let speed = vel.0.length();
+    // Oriente les jambes vers la marche (les pieds pointent vers +Y dans le
+    // sprite → on retranche 90°). On garde l'orientation précédente à l'arrêt.
+    if speed > 5.0 {
+        tf.rotation = Quat::from_rotation_z(vel.0.to_angle() - std::f32::consts::FRAC_PI_2);
+    }
+    if dash.dashing() {
+        sprite.image = sprites.legs_dash.clone();
+        return;
+    }
+    if speed > 10.0 {
+        // Cadence de l'animation proportionnelle à la vitesse.
+        let rate = (0.22 - 0.0004 * speed).clamp(0.08, 0.22);
+        state.anim.set_duration(std::time::Duration::from_secs_f32(rate));
+        state.anim.tick(time.delta());
+        if state.anim.just_finished() {
+            state.frame = (state.frame + 1) % 2;
+        }
+        sprite.image = sprites.legs_walk[state.frame].clone();
     } else {
-        sprite.color = sprite.color.with_alpha(1.0);
+        // À l'arrêt : pose neutre (1re frame).
+        sprite.image = sprites.legs_walk[0].clone();
+    }
+}
+
+/// Couches bras + chapeau : orientées vers la visée (souris).
+fn orient_body(aim: Res<Aim>, mut layers: Query<&mut Transform, With<AimOriented>>) {
+    // L'avant des sprites pointe vers +Y → on retranche 90°.
+    let rot = Quat::from_rotation_z(aim.dir.to_angle() - std::f32::consts::FRAC_PI_2);
+    for mut tf in &mut layers {
+        tf.rotation = rot;
+    }
+}
+
+/// Couche 2 (teinte) : rouge quand on encaisse, bleu pendant les i-frames de
+/// dash, sinon teinte normale (blanc = sprite tel quel).
+fn tint_body(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut player: Query<(Entity, &Iframes, &Dash, Option<&mut HitFlash>), With<Player>>,
+    mut body: Query<&mut Sprite, With<PlayerBody>>,
+) {
+    let Ok((entity, iframes, dash, hit_flash)) = player.single_mut() else {
+        return;
+    };
+    let Ok(mut sprite) = body.single_mut() else {
+        return;
+    };
+
+    // Priorité : flash de dégâts (rouge) > i-frames (bleu clignotant) > normal.
+    if let Some(mut flash) = hit_flash {
+        flash.0.tick(time.delta());
+        if flash.0.is_finished() {
+            commands.entity(entity).remove::<HitFlash>();
+        } else {
+            sprite.color = Color::srgb(1.0, 0.3, 0.3);
+            return;
+        }
+    }
+
+    if !iframes.0.is_finished() {
+        // Pendant le dash : bleu franc. Hors dash (coup encaissé) : bleu clignotant.
+        let blink = dash.dashing() || (iframes.0.elapsed_secs() * 30.0).sin() > 0.0;
+        sprite.color = if blink {
+            Color::srgb(0.55, 0.8, 1.0)
+        } else {
+            Color::srgb(0.85, 0.95, 1.0)
+        };
+    } else {
+        sprite.color = Color::WHITE;
     }
 }
 

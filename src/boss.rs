@@ -1,25 +1,30 @@
 //! Les boss : prédateurs du jardin, un par biome, avec patterns propres
 //! (GDD §8.2). Chacun arrive après un gauntlet de 3 vagues (GDD §6.3).
+//!
+//! - Plaine  : Mémé Mygale (araignée) — bonds, jet de toile, araignéeaux.
+//! - Savane  : Roger le Scorpion — charges de pinces, salves de dard venimeux.
+//! - Jungle  : Grompaud (crapaud, clin d'œil au Gromp de LoL) — bonds AoE,
+//!             langue en ligne, crachats toxiques.
 
 use bevy::prelude::*;
 use rand::prelude::*;
 
 use crate::common::*;
-use crate::enemies::{spawn_enemy_projectile, AiSpeed, HazardPuddle, PattesDrop};
+use crate::enemies::{spawn_enemy, spawn_enemy_projectile, AiSpeed, EnemyKind, HazardPuddle, PattesDrop};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BossKind {
-    Taupe,
-    Frelon,
-    Crapaud,
+    Araignee,
+    Scorpion,
+    Gromp,
 }
 
 impl BossKind {
     pub fn name(self) -> &'static str {
         match self {
-            BossKind::Taupe => "Gérard la Taupe",
-            BossKind::Frelon => "Baron Frelon",
-            BossKind::Crapaud => "Maître Crapaud",
+            BossKind::Araignee => "Mémé Mygale",
+            BossKind::Scorpion => "Roger le Scorpion",
+            BossKind::Gromp => "Grompaud",
         }
     }
 }
@@ -34,9 +39,9 @@ pub struct BossAiTag;
 
 pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32) -> Entity {
     let (hp, radius, color, contact) = match kind {
-        BossKind::Taupe => (380.0, 26.0, Color::srgb(0.4, 0.3, 0.25), 14.0),
-        BossKind::Frelon => (330.0, 22.0, Color::srgb(0.9, 0.65, 0.1), 15.0),
-        BossKind::Crapaud => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
+        BossKind::Araignee => (360.0, 25.0, Color::srgb(0.28, 0.24, 0.34), 13.0),
+        BossKind::Scorpion => (360.0, 24.0, Color::srgb(0.65, 0.45, 0.2), 15.0),
+        BossKind::Gromp => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
     };
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
     let mut e = commands.spawn((
@@ -56,23 +61,25 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         crate::enemies::EnemyKind::Scarabee, // type « gros » par défaut pour les systèmes génériques
     ));
     match kind {
-        BossKind::Taupe => {
-            e.insert(Taupe {
-                state: TaupeState::Chase,
-                timer: Timer::from_seconds(2.2, TimerMode::Once),
+        BossKind::Araignee => {
+            e.insert(Araignee {
+                state: AraigneeState::Chase,
+                timer: Timer::from_seconds(1.6, TimerMode::Once),
+                leap_from: pos,
+                leap_to: pos,
             });
         }
-        BossKind::Frelon => {
-            e.insert(Frelon {
-                state: FrelonState::Strafe,
+        BossKind::Scorpion => {
+            e.insert(Scorpion {
+                state: ScorpionState::Strafe,
                 timer: Timer::from_seconds(1.4, TimerMode::Once),
                 charge_dir: Vec2::X,
                 volley_left: 0,
             });
         }
-        BossKind::Crapaud => {
-            e.insert(Crapaud {
-                state: CrapaudState::Chase,
+        BossKind::Gromp => {
+            e.insert(Gromp {
+                state: GrompState::Chase,
                 timer: Timer::from_seconds(1.2, TimerMode::Once),
                 leap_from: pos,
                 leap_to: pos,
@@ -83,101 +90,146 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
 }
 
 // ---------------------------------------------------------------------------
-// La Taupe (Plaine) : s'enfouit, fonce sous terre, jaillit en AoE.
+// Mémé Mygale (Plaine) : skitter, bond AoE, jet de toile radial, araignéeaux.
 // ---------------------------------------------------------------------------
 
 #[derive(Component)]
-pub struct Taupe {
-    state: TaupeState,
+pub struct Araignee {
+    state: AraigneeState,
     timer: Timer,
+    leap_from: Vec2,
+    leap_to: Vec2,
 }
 
-enum TaupeState {
+enum AraigneeState {
     Chase,
-    Burrow,
-    Emerge,
+    LeapTelegraph,
+    Leap,
+    WebBurst,
+    Summon,
 }
 
-fn taupe_ai(
+fn araignee_ai(
     time: Res<Time>,
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
     player: Query<(Entity, &Transform, &Radius, &crate::player::Iframes), With<Player>>,
-    mut bosses: Query<(Entity, &Transform, &mut Velocity, &mut Sprite, &BaseColor, &mut Taupe)>,
+    mut bosses: Query<(Entity, &mut Transform, &mut Velocity, &mut Araignee), Without<Player>>,
 ) {
     let Ok((player_e, player_tf, player_r, iframes)) = player.single() else {
         return;
     };
     let player_pos = player_tf.translation.truncate();
-    for (e, tf, mut vel, mut sprite, base, mut taupe) in &mut bosses {
-        taupe.timer.tick(time.delta());
+    let mut rng = rand::rng();
+    for (e, mut tf, mut vel, mut spider) in &mut bosses {
+        spider.timer.tick(time.delta());
         let pos = tf.translation.truncate();
-        let dir = (player_pos - pos).normalize_or_zero();
-        match taupe.state {
-            TaupeState::Chase => {
-                vel.0 = vel.0.move_towards(dir * 80.0, 500.0 * time.delta_secs());
-                if taupe.timer.is_finished() {
-                    taupe.state = TaupeState::Burrow;
-                    taupe.timer = Timer::from_seconds(1.5, TimerMode::Once);
-                    sprite.color = base.0.with_alpha(0.35);
+        let dir = (player_pos - pos).normalize_or(Vec2::X);
+        match spider.state {
+            AraigneeState::Chase => {
+                // Déplacement saccadé d'araignée.
+                let jitter = Vec2::from_angle(rng.random_range(-0.5..0.5));
+                vel.0 = vel.0.move_towards(dir.rotate(jitter) * 120.0, 600.0 * time.delta_secs());
+                if spider.timer.is_finished() {
+                    let roll: f32 = rng.random_range(0.0..1.0);
+                    if roll < 0.5 {
+                        spider.state = AraigneeState::LeapTelegraph;
+                        spider.timer = Timer::from_seconds(0.4, TimerMode::Once);
+                        spider.leap_from = pos;
+                        spider.leap_to = player_pos;
+                        commands.spawn((
+                            Sprite::from_color(
+                                Color::srgb(0.9, 0.3, 0.1).with_alpha(0.25),
+                                Vec2::splat(180.0),
+                            ),
+                            Transform::from_translation(player_pos.extend(-2.0))
+                                .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+                            Lifetime::secs(0.9),
+                        ));
+                    } else if roll < 0.8 {
+                        spider.state = AraigneeState::WebBurst;
+                        spider.timer = Timer::from_seconds(0.3, TimerMode::Once);
+                        vel.0 = Vec2::ZERO;
+                    } else {
+                        spider.state = AraigneeState::Summon;
+                        spider.timer = Timer::from_seconds(0.3, TimerMode::Once);
+                        vel.0 = Vec2::ZERO;
+                    }
+                }
+            }
+            AraigneeState::LeapTelegraph => {
+                vel.0 = Vec2::ZERO;
+                if spider.timer.is_finished() {
+                    spider.state = AraigneeState::Leap;
+                    spider.timer = Timer::from_seconds(0.5, TimerMode::Once);
                     commands.entity(e).insert(Untouchable);
                 }
             }
-            TaupeState::Burrow => {
-                // Une bosse de terre qui file vers le joueur.
-                vel.0 = vel.0.move_towards(dir * 290.0, 900.0 * time.delta_secs());
-                if taupe.timer.is_finished() {
-                    taupe.state = TaupeState::Emerge;
-                    taupe.timer = Timer::from_seconds(0.4, TimerMode::Once);
-                    vel.0 = Vec2::ZERO;
-                    // Télégraphe du jaillissement.
-                    commands.spawn((
-                        Sprite::from_color(
-                            Color::srgb(0.9, 0.3, 0.1).with_alpha(0.25),
-                            Vec2::splat(220.0),
-                        ),
-                        Transform::from_translation(pos.extend(-2.0))
-                            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
-                        Lifetime::secs(0.4),
-                    ));
-                }
-            }
-            TaupeState::Emerge => {
+            AraigneeState::Leap => {
                 vel.0 = Vec2::ZERO;
-                if taupe.timer.is_finished() {
-                    sprite.color = base.0;
+                let t = spider.timer.fraction();
+                let arc = (t * std::f32::consts::PI).sin() * 55.0;
+                let xy = spider.leap_from.lerp(spider.leap_to, t);
+                tf.translation.x = xy.x;
+                tf.translation.y = xy.y + arc;
+                if spider.timer.is_finished() {
                     commands.entity(e).remove::<Untouchable>();
-                    // AoE de jaillissement.
-                    if pos.distance(player_pos) < 110.0 + player_r.0 && iframes.0.is_finished() {
+                    let land = spider.leap_to;
+                    tf.translation.x = land.x;
+                    tf.translation.y = land.y;
+                    if land.distance(player_pos) < 95.0 + player_r.0 && iframes.0.is_finished() {
                         dmg.write(DamageMsg {
                             target: player_e,
-                            amount: 16.0,
+                            amount: 15.0,
                             kind: DamageKind::Hit,
                         });
                     }
-                    // Anneau de mottes de terre.
-                    for i in 0..10 {
-                        let d = Vec2::from_angle(i as f32 / 10.0 * std::f32::consts::TAU);
+                    // Éclaboussure de toile autour du point de chute.
+                    for i in 0..8 {
+                        let d = Vec2::from_angle(i as f32 / 8.0 * std::f32::consts::TAU);
                         spawn_enemy_projectile(
                             &mut commands,
-                            pos + d * 20.0,
-                            d * 190.0,
-                            8.0,
-                            Color::srgb(0.5, 0.35, 0.2),
+                            land + d * 18.0,
+                            d * 170.0,
+                            7.0,
+                            Color::srgb(0.85, 0.85, 0.9),
                         );
                     }
-                    // Effet visuel d'éclat.
+                    spider.state = AraigneeState::Chase;
+                    spider.timer = Timer::from_seconds(1.4, TimerMode::Once);
+                }
+            }
+            AraigneeState::WebBurst => {
+                vel.0 = Vec2::ZERO;
+                if spider.timer.is_finished() {
+                    // Jet de toile en éventail radial dense.
                     for i in 0..12 {
                         let d = Vec2::from_angle(i as f32 / 12.0 * std::f32::consts::TAU);
-                        commands.spawn((
-                            Sprite::from_color(Color::srgb(0.55, 0.4, 0.25), Vec2::splat(7.0)),
-                            Transform::from_translation((pos + d * 15.0).extend(9.0)),
-                            Velocity(d * 260.0),
-                            Lifetime::secs(0.3),
-                        ));
+                        spawn_enemy_projectile(
+                            &mut commands,
+                            pos + d * 22.0,
+                            d * 215.0,
+                            6.0,
+                            Color::srgb(0.85, 0.85, 0.9),
+                        );
                     }
-                    taupe.state = TaupeState::Chase;
-                    taupe.timer = Timer::from_seconds(2.2, TimerMode::Once);
+                    spider.state = AraigneeState::Chase;
+                    spider.timer = Timer::from_seconds(1.2, TimerMode::Once);
+                }
+            }
+            AraigneeState::Summon => {
+                vel.0 = Vec2::ZERO;
+                if spider.timer.is_finished() {
+                    // Pond 2-3 araignéeaux (petites araignées).
+                    for _ in 0..rng.random_range(2..=3) {
+                        let off = Vec2::new(
+                            rng.random_range(-40.0..40.0),
+                            rng.random_range(-40.0..40.0),
+                        );
+                        spawn_enemy(&mut commands, EnemyKind::Araignee, pos + off, 1.0, 1.0, false);
+                    }
+                    spider.state = AraigneeState::Chase;
+                    spider.timer = Timer::from_seconds(1.6, TimerMode::Once);
                 }
             }
         }
@@ -185,100 +237,101 @@ fn taupe_ai(
 }
 
 // ---------------------------------------------------------------------------
-// Le Frelon (Savane) : strafe, charge télégraphée, rafales d'aiguillons.
+// Roger le Scorpion (Savane) : strafe, charge de pinces, salves de dard.
 // ---------------------------------------------------------------------------
 
 #[derive(Component)]
-pub struct Frelon {
-    state: FrelonState,
+pub struct Scorpion {
+    state: ScorpionState,
     timer: Timer,
     charge_dir: Vec2,
     volley_left: u32,
 }
 
-enum FrelonState {
+enum ScorpionState {
     Strafe,
     Telegraph,
     Charge,
     Volley,
 }
 
-fn frelon_ai(
+fn scorpion_ai(
     time: Res<Time>,
     mut commands: Commands,
     player: Query<&Transform, With<Player>>,
-    mut bosses: Query<(&Transform, &mut Velocity, &mut Sprite, &BaseColor, &mut Frelon)>,
+    mut bosses: Query<(&Transform, &mut Velocity, &mut Sprite, &BaseColor, &mut Scorpion)>,
 ) {
     let Ok(player_tf) = player.single() else {
         return;
     };
     let player_pos = player_tf.translation.truncate();
     let mut rng = rand::rng();
-    for (tf, mut vel, mut sprite, base, mut frelon) in &mut bosses {
-        frelon.timer.tick(time.delta());
+    for (tf, mut vel, mut sprite, base, mut scorpion) in &mut bosses {
+        scorpion.timer.tick(time.delta());
         let pos = tf.translation.truncate();
         let to_player = player_pos - pos;
         let dir = to_player.normalize_or(Vec2::X);
-        match frelon.state {
-            FrelonState::Strafe => {
-                // Orbite autour du joueur à ~240 de distance.
+        match scorpion.state {
+            ScorpionState::Strafe => {
                 let dist = to_player.length();
-                let orbit = Vec2::new(-dir.y, dir.x) * 160.0;
+                let orbit = Vec2::new(-dir.y, dir.x) * 150.0;
                 let approach = if dist > 260.0 {
-                    dir * 140.0
+                    dir * 130.0
                 } else if dist < 200.0 {
-                    -dir * 140.0
+                    -dir * 130.0
                 } else {
                     Vec2::ZERO
                 };
                 vel.0 = vel.0.move_towards(orbit + approach, 800.0 * time.delta_secs());
-                if frelon.timer.is_finished() {
+                if scorpion.timer.is_finished() {
                     if rng.random_bool(0.55) {
-                        frelon.state = FrelonState::Telegraph;
-                        frelon.timer = Timer::from_seconds(0.45, TimerMode::Once);
+                        scorpion.state = ScorpionState::Telegraph;
+                        scorpion.timer = Timer::from_seconds(0.45, TimerMode::Once);
                     } else {
-                        frelon.state = FrelonState::Volley;
-                        frelon.timer = Timer::from_seconds(0.25, TimerMode::Once);
-                        frelon.volley_left = 3;
+                        scorpion.state = ScorpionState::Volley;
+                        scorpion.timer = Timer::from_seconds(0.25, TimerMode::Once);
+                        scorpion.volley_left = 3;
                     }
                 }
             }
-            FrelonState::Telegraph => {
+            ScorpionState::Telegraph => {
                 vel.0 = vel.0.move_towards(Vec2::ZERO, 1200.0 * time.delta_secs());
                 sprite.color = base.0.mix(&Color::srgb(1.0, 0.1, 0.1), 0.6);
-                frelon.charge_dir = dir;
-                if frelon.timer.is_finished() {
+                scorpion.charge_dir = dir;
+                if scorpion.timer.is_finished() {
                     sprite.color = base.0;
-                    frelon.state = FrelonState::Charge;
-                    frelon.timer = Timer::from_seconds(0.55, TimerMode::Once);
+                    scorpion.state = ScorpionState::Charge;
+                    scorpion.timer = Timer::from_seconds(0.55, TimerMode::Once);
                 }
             }
-            FrelonState::Charge => {
-                vel.0 = frelon.charge_dir * 620.0;
-                if frelon.timer.is_finished() {
-                    frelon.state = FrelonState::Strafe;
-                    frelon.timer = Timer::from_seconds(1.4, TimerMode::Once);
+            ScorpionState::Charge => {
+                // Charge de pinces.
+                vel.0 = scorpion.charge_dir * 600.0;
+                if scorpion.timer.is_finished() {
+                    scorpion.state = ScorpionState::Strafe;
+                    scorpion.timer = Timer::from_seconds(1.4, TimerMode::Once);
                 }
             }
-            FrelonState::Volley => {
+            ScorpionState::Volley => {
                 vel.0 = vel.0.move_towards(Vec2::ZERO, 1000.0 * time.delta_secs());
-                if frelon.timer.is_finished() {
-                    frelon.volley_left = frelon.volley_left.saturating_sub(1);
+                if scorpion.timer.is_finished() {
+                    scorpion.volley_left = scorpion.volley_left.saturating_sub(1);
+                    // Dard venimeux en éventail.
                     for spread in [-0.22, 0.0, 0.22] {
                         let d = Vec2::from_angle(dir.to_angle() + spread);
                         spawn_enemy_projectile(
                             &mut commands,
                             pos + d * 24.0,
-                            d * 310.0,
+                            d * 320.0,
                             7.0,
-                            Color::srgb(1.0, 0.9, 0.3),
+                            Color::srgb(0.6, 0.9, 0.3),
                         );
                     }
-                    if frelon.volley_left == 0 {
-                        frelon.state = FrelonState::Strafe;
-                        frelon.timer = Timer::from_seconds(1.4, TimerMode::Once);
+                    if scorpion.volley_left == 0 {
+                        scorpion.state = ScorpionState::Strafe;
+                        scorpion.timer = Timer::from_seconds(1.4, TimerMode::Once);
                     } else {
-                        frelon.timer = Timer::from_seconds(0.3, TimerMode::Once);
+                        scorpion.timer = Timer::from_seconds(0.3, TimerMode::Once);
                     }
                 }
             }
@@ -287,49 +340,49 @@ fn frelon_ai(
 }
 
 // ---------------------------------------------------------------------------
-// Le Crapaud (Jungle) : bonds en AoE, langue en ligne, crachats toxiques.
+// Grompaud (Jungle, clin d'œil au Gromp de LoL) : bonds AoE, langue, crachats.
 // ---------------------------------------------------------------------------
 
 #[derive(Component)]
-pub struct Crapaud {
-    state: CrapaudState,
+pub struct Gromp {
+    state: GrompState,
     timer: Timer,
     leap_from: Vec2,
     leap_to: Vec2,
 }
 
-enum CrapaudState {
+enum GrompState {
     Chase,
     LeapTelegraph,
     Leap,
     TongueTelegraph { dir: Vec2 },
 }
 
-fn crapaud_ai(
+fn gromp_ai(
     time: Res<Time>,
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
     player: Query<(Entity, &Transform, &Radius, &crate::player::Iframes), With<Player>>,
-    mut bosses: Query<(Entity, &mut Transform, &mut Velocity, &mut Crapaud), Without<Player>>,
+    mut bosses: Query<(Entity, &mut Transform, &mut Velocity, &mut Gromp), Without<Player>>,
 ) {
     let Ok((player_e, player_tf, player_r, iframes)) = player.single() else {
         return;
     };
     let player_pos = player_tf.translation.truncate();
     let mut rng = rand::rng();
-    for (e, mut tf, mut vel, mut crapaud) in &mut bosses {
-        crapaud.timer.tick(time.delta());
+    for (e, mut tf, mut vel, mut gromp) in &mut bosses {
+        gromp.timer.tick(time.delta());
         let pos = tf.translation.truncate();
         let dir = (player_pos - pos).normalize_or(Vec2::X);
-        match crapaud.state {
-            CrapaudState::Chase => {
+        match gromp.state {
+            GrompState::Chase => {
                 vel.0 = vel.0.move_towards(dir * 60.0, 400.0 * time.delta_secs());
-                if crapaud.timer.is_finished() {
+                if gromp.timer.is_finished() {
                     if rng.random_bool(0.6) {
-                        crapaud.state = CrapaudState::LeapTelegraph;
-                        crapaud.timer = Timer::from_seconds(0.45, TimerMode::Once);
-                        crapaud.leap_from = pos;
-                        crapaud.leap_to = player_pos;
+                        gromp.state = GrompState::LeapTelegraph;
+                        gromp.timer = Timer::from_seconds(0.45, TimerMode::Once);
+                        gromp.leap_from = pos;
+                        gromp.leap_to = player_pos;
                         commands.spawn((
                             Sprite::from_color(
                                 Color::srgb(0.9, 0.3, 0.1).with_alpha(0.25),
@@ -340,8 +393,8 @@ fn crapaud_ai(
                             Lifetime::secs(1.0),
                         ));
                     } else {
-                        crapaud.state = CrapaudState::TongueTelegraph { dir };
-                        crapaud.timer = Timer::from_seconds(0.35, TimerMode::Once);
+                        gromp.state = GrompState::TongueTelegraph { dir };
+                        gromp.timer = Timer::from_seconds(0.35, TimerMode::Once);
                         let angle = dir.to_angle();
                         commands.spawn((
                             Sprite::from_color(
@@ -355,26 +408,26 @@ fn crapaud_ai(
                     }
                 }
             }
-            CrapaudState::LeapTelegraph => {
+            GrompState::LeapTelegraph => {
                 vel.0 = Vec2::ZERO;
-                if crapaud.timer.is_finished() {
-                    crapaud.state = CrapaudState::Leap;
-                    crapaud.timer = Timer::from_seconds(0.55, TimerMode::Once);
+                if gromp.timer.is_finished() {
+                    gromp.state = GrompState::Leap;
+                    gromp.timer = Timer::from_seconds(0.55, TimerMode::Once);
                     commands.entity(e).insert(Untouchable);
                 }
             }
-            CrapaudState::Leap => {
+            GrompState::Leap => {
                 vel.0 = Vec2::ZERO;
-                let t = crapaud.timer.fraction();
+                let t = gromp.timer.fraction();
                 let arc = (t * std::f32::consts::PI).sin() * 60.0;
-                let xy = crapaud.leap_from.lerp(crapaud.leap_to, t);
+                let xy = gromp.leap_from.lerp(gromp.leap_to, t);
                 tf.translation.x = xy.x;
                 tf.translation.y = xy.y + arc;
-                if crapaud.timer.is_finished() {
+                if gromp.timer.is_finished() {
                     commands.entity(e).remove::<Untouchable>();
-                    tf.translation.x = crapaud.leap_to.x;
-                    tf.translation.y = crapaud.leap_to.y;
-                    let land = crapaud.leap_to;
+                    tf.translation.x = gromp.leap_to.x;
+                    tf.translation.y = gromp.leap_to.y;
+                    let land = gromp.leap_to;
                     if land.distance(player_pos) < 100.0 + player_r.0 && iframes.0.is_finished() {
                         dmg.write(DamageMsg {
                             target: player_e,
@@ -395,14 +448,13 @@ fn crapaud_ai(
                             },
                         ));
                     }
-                    crapaud.state = CrapaudState::Chase;
-                    crapaud.timer = Timer::from_seconds(1.1, TimerMode::Once);
+                    gromp.state = GrompState::Chase;
+                    gromp.timer = Timer::from_seconds(1.1, TimerMode::Once);
                 }
             }
-            CrapaudState::TongueTelegraph { dir } => {
+            GrompState::TongueTelegraph { dir } => {
                 vel.0 = Vec2::ZERO;
-                if crapaud.timer.is_finished() {
-                    // Coup de langue : dégâts en ligne.
+                if gromp.timer.is_finished() {
                     let to_player = player_pos - pos;
                     let along = to_player.dot(dir);
                     let perp = (to_player - dir * along).length();
@@ -423,8 +475,8 @@ fn crapaud_ai(
                             .with_rotation(Quat::from_rotation_z(angle)),
                         Lifetime::secs(0.15),
                     ));
-                    crapaud.state = CrapaudState::Chase;
-                    crapaud.timer = Timer::from_seconds(1.0, TimerMode::Once);
+                    gromp.state = GrompState::Chase;
+                    gromp.timer = Timer::from_seconds(1.0, TimerMode::Once);
                 }
             }
         }
@@ -472,7 +524,7 @@ impl Plugin for BossPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (taupe_ai, frelon_ai, crapaud_ai, glob_system)
+            (araignee_ai, scorpion_ai, gromp_ai, glob_system)
                 .in_set(GameSet::Ai)
                 .run_if(combat_active),
         );

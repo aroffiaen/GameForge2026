@@ -57,6 +57,7 @@ impl Plugin for TerrassePlugin {
 
 fn enter_terrasse(
     mut commands: Commands,
+    sprites: Res<GameSprites>,
     mut terrasse: ResMut<TerrasseState>,
     mut arena: ResMut<Arena>,
     mut clear_color: ResMut<ClearColor>,
@@ -100,7 +101,7 @@ fn enter_terrasse(
 
     // Le joueur arrive avec son build de run (ou à nu en accès direct).
     let player_stats = PlayerStats::compute(&meta, &augments);
-    let player = spawn_player(&mut commands, &player_stats, Vec2::ZERO);
+    let player = spawn_player(&mut commands, &sprites, &player_stats, Vec2::ZERO);
     commands
         .entity(player)
         .insert(DespawnOnExit(AppState::Terrasse));

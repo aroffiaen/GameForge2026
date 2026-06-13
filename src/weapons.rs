@@ -574,6 +574,7 @@ fn sync_weapon_sprites(
     loadout: Res<Loadout>,
     aim: Res<Aim>,
     swings: Res<SwingAnims>,
+    sprites: Res<GameSprites>,
     mut q: Query<(&WeaponSprite, &mut Sprite, &mut Transform)>,
 ) {
     for (slot_marker, mut sprite, mut tf) in &mut q {
@@ -582,8 +583,21 @@ fn sync_weapon_sprites(
             None => {
                 sprite.color = Color::NONE;
             }
+            Some(WeaponKind::Pelle) => {
+                // La pelle a son propre sprite (arme à deux mains), centrée
+                // devant le perso et orientée vers la visée.
+                sprite.image = sprites.pelle.clone();
+                sprite.color = Color::WHITE;
+                sprite.custom_size = Some(Vec2::splat(46.0));
+                let swing = swings.0[slot];
+                let offset = aim.dir * (10.0 + swing * 90.0);
+                tf.translation = offset.extend(2.0);
+                tf.rotation = Quat::from_rotation_z(aim.dir.to_angle());
+            }
             Some(kind) => {
                 let weapon = def(kind);
+                // Forme colorée (placeholder en attendant sprite-arme-R/L).
+                sprite.image = Handle::default();
                 sprite.color = weapon.color;
                 sprite.custom_size = Some(weapon.size);
                 let side = if slot == 0 { 1.0 } else { -1.0 };
