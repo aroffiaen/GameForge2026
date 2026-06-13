@@ -1,4 +1,7 @@
+mod collectible;
+mod modifier;
 mod player;
+mod speed;
 
 use bevy::prelude::*;
 
