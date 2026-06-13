@@ -26,24 +26,35 @@ pub fn mob_ai(
 
         // force de separation : eviter de se marcher dessus
         let mut separation = Vec3::ZERO;
+
+        // eviter les autres mobs
         for (other_entity, other_pos) in &mob_positions {
             if entity == *other_entity { continue; }
-            
+
             let diff = position - *other_pos;
             let distance = diff.length();
+
             if distance < 45.0 && distance > 0.0 {
-                // force exponentielle : plus ils sont proches, plus le rejet est violent
-                let strength = (55.0 - distance).powi(2) / 55.0;
+                let strength = (45.0 - distance).powi(2) / 45.0;
                 separation += diff.normalize() * strength;
             }
+        }
+
+        // eviter le joueur (collision physique)
+        let diff_player = position - target_pos;
+        let dist_player = diff_player.length();
+
+        if dist_player < 45.0 && dist_player > 0.0 {
+            let strength = (45.0 - dist_player).powi(2) / 45.0;
+            separation += diff_player.normalize() * strength * 2.0; // repulsion plus forte
         }
 
         // combiner mouvement : vers le joueur + evitement
         if direction.length() > 0.0 {
             direction = direction.normalize();
         }
-        
-        let final_move = direction + separation * 0.8; // coefficient augmenté pour éviter de coller
+
+        let final_move = direction + separation * 0.8;
         
         if final_move.length() > 0.0 {
             let velocity = final_move.normalize() * mob.speed * time.delta_secs();
