@@ -40,6 +40,7 @@ pub fn spawn_wave_system(
                 Enemy,
                 ContactDmg(stats.dmg),
                 BaseColor(stats.color),
+                crate::mobs::components::AiState::Idle,
             ));
 
             if let AiKind::Ranged { shoot_cd, .. } = stats.ai {
@@ -69,6 +70,7 @@ pub fn spawn_wave_system(
                 Enemy,
                 ContactDmg(stats.dmg * 2.0),
                 BaseColor(stats.color),
+                crate::mobs::components::AiState::Idle,
             ));
             info!("VAGUE 3 : LE BOSS {:?} APPARAIT !", kind);
         } else {
