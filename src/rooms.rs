@@ -3,20 +3,19 @@
 use bevy::prelude::*;
 use rand::prelude::*;
 
-use crate::augments::{grant_random, AfterAugment, Augment, Augments};
+use crate::augments::{AfterAugment, Augment, Augments};
 use crate::biomes::Biome;
 use crate::common::*;
 use crate::enemies::{spawn_enemy, EnemyKind};
 use crate::meta::MetaSave;
 use crate::player::{spawn_player, PlayerStats};
-use crate::stats::Stats;
+use crate::stats::{Stat, Stats};
 use crate::weapons::PoisonPuddle;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RoomKind {
     Combat,
     Elite,
-    Tresor,
     Boss,
 }
 
@@ -35,6 +34,16 @@ pub struct RunState {
     pub gauntlet: Option<u8>,
     /// La terrasse a-t-elle été atteinte par une vraie run ?
     pub came_from_run: bool,
+    // --- Stats-Up chronométré (GDD §3.1, refonte v0.3 partie B) ---
+    /// Stat misée à la porte précédente, transmise à la prochaine salle.
+    pub pending_bet: Option<Stat>,
+    /// Mise active dans la salle courante (résolue à la fin de la salle).
+    pub bet: Option<Stat>,
+    /// La salle courante est-elle chronométrée ? (faux = salle 1 / boss).
+    pub chrono_active: bool,
+    /// Temps cible et temps écoulé (s) de la salle chronométrée courante.
+    pub chrono_target: f32,
+    pub chrono_elapsed: f32,
 }
 
 impl Default for RunState {
@@ -47,6 +56,11 @@ impl Default for RunState {
             room_kind: RoomKind::Combat,
             gauntlet: None,
             came_from_run: false,
+            pending_bet: None,
+            bet: None,
+            chrono_active: false,
+            chrono_target: 0.0,
+            chrono_elapsed: 0.0,
         }
     }
 }
@@ -67,15 +81,10 @@ pub struct RoomEntity;
 #[derive(Component)]
 pub struct Door;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Reward {
-    Soin,
-    Pattes,
-    AugmentAleatoire,
-}
-
+/// Porte-stat : la stat misée si le joueur passe par cette porte (GDD §3.1).
+/// Absente sur la porte simple d'entrée du boss (pas de mise).
 #[derive(Component)]
-pub struct Pedestal(pub Reward);
+pub struct DoorChoice(pub Stat);
 
 #[derive(Message)]
 pub struct BuildRoom;
@@ -97,12 +106,13 @@ impl Plugin for RoomsPlugin {
             )
             .add_systems(
                 Update,
-                (check_room_clear, crate::common::tick_run_time).run_if(combat_active),
+                (check_room_clear, tick_chrono, crate::common::tick_run_time)
+                    .run_if(combat_active),
             )
             .add_systems(OnEnter(RunPhase::DoorOpen), spawn_door)
             .add_systems(
                 Update,
-                (door_interact, pedestal_interact).run_if(in_state(RunPhase::DoorOpen)),
+                door_interact.run_if(in_state(RunPhase::DoorOpen)),
             )
             .add_systems(OnEnter(RunPhase::BiomeChoice), open_biome_ui)
             .add_systems(
@@ -143,6 +153,7 @@ fn start_run(
         room_kind: RoomKind::Combat,
         gauntlet: None,
         came_from_run: false,
+        ..default()
     };
     arena.half = Vec2::new(550.0, 310.0);
 
@@ -258,6 +269,7 @@ fn build_room(
                 run.room_index + 1,
                 run.rooms_in_biome
             )));
+            setup_room_chrono(&mut run, n_small + n_med + n_big, false);
             next_phase.set(RunPhase::Fighting);
         }
         RoomKind::Elite => {
@@ -274,41 +286,12 @@ fn build_room(
             );
             spawn_tier(&mut commands, &mut rng, biome, 0, 3, hp_scale, dmg_scale, &arena);
             toasts.write(ToastMsg("SALLE D'ÉLITE — grosse bête, grosse récompense".into()));
+            setup_room_chrono(&mut run, 4, true);
             next_phase.set(RunPhase::Fighting);
-        }
-        RoomKind::Tresor => {
-            run.gauntlet = None;
-            let rewards = [
-                (Reward::Soin, "Soin (+20 PV)", Color::srgb(0.9, 0.3, 0.4)),
-                (Reward::Pattes, "Pattes (+35)", Color::srgb(0.95, 0.85, 0.5)),
-                (Reward::AugmentAleatoire, "Augment mystère", Color::srgb(0.6, 0.4, 0.9)),
-            ];
-            for (i, (reward, label, color)) in rewards.into_iter().enumerate() {
-                let x = (i as f32 - 1.0) * 150.0;
-                commands
-                    .spawn((
-                        RoomEntity,
-                        Pedestal(reward),
-                        Sprite::from_color(color, Vec2::splat(26.0)),
-                        Transform::from_translation(Vec2::new(x, 30.0).extend(4.0)),
-                    ))
-                    .with_children(|p| {
-                        p.spawn((
-                            Text2d::new(label),
-                            TextFont { font_size: 13.0, ..default() },
-                            TextColor(Color::WHITE),
-                            Transform::from_xyz(0.0, 28.0, 1.0),
-                        ));
-                    });
-            }
-            toasts.write(ToastMsg("Salle au trésor — choisis UN cadeau (E)".into()));
-            // La phase reste DoorOpen → pas de transition d'état, donc on pose
-            // la porte à la main.
-            spawn_door_inner(&mut commands, &arena);
-            next_phase.set(RunPhase::DoorOpen);
         }
         RoomKind::Boss => {
             run.gauntlet = Some(1);
+            setup_room_chrono(&mut run, 0, false); // jamais de chrono au boss
             let n = 7 + run.biome_index;
             spawn_tier(&mut commands, &mut rng, biome, 0, n, hp_scale, dmg_scale, &arena);
             toasts.write(ToastMsg(format!(
@@ -351,6 +334,63 @@ fn spawn_tier(
 }
 
 // ---------------------------------------------------------------------------
+// Stats-Up chronométré (GDD §3.1-3.2)
+// ---------------------------------------------------------------------------
+
+/// Active (ou non) le chrono de la salle qu'on vient de construire, selon la
+/// mise posée à la porte précédente (`pending_bet`).
+fn setup_room_chrono(run: &mut RunState, enemy_count: u32, is_elite: bool) {
+    match run.pending_bet.take() {
+        Some(stat) => {
+            // Seuil ∝ densité de la salle ; plus permissif en élite (GDD §3.2).
+            let base = 4.0 + 1.1 * enemy_count as f32 + 0.5 * run.biome_index as f32;
+            run.chrono_target = if is_elite { base * 1.6 } else { base };
+            run.chrono_elapsed = 0.0;
+            run.chrono_active = true;
+            run.bet = Some(stat);
+        }
+        None => {
+            run.chrono_active = false;
+            run.bet = None;
+        }
+    }
+}
+
+/// Résout la mise de la salle chronométrée qu'on vient de nettoyer :
+/// réussite (sous le temps) → +2 pts/s d'avance ; échec → −1 pt/s de retard,
+/// plafonné à −15 (GDD §3.2).
+fn resolve_chrono(run: &mut RunState, statup: &mut Stats, toasts: &mut MessageWriter<ToastMsg>) {
+    if !run.chrono_active {
+        return;
+    }
+    run.chrono_active = false;
+    let Some(bet) = run.bet.take() else { return };
+    let (target, elapsed) = (run.chrono_target, run.chrono_elapsed);
+    if elapsed <= target {
+        let gain = 2.0 * (target - elapsed);
+        statup.add(bet, gain);
+        toasts.write(ToastMsg(format!(
+            "⏱ {elapsed:.1}s ≤ {target:.1}s — {} +{gain:.0}%",
+            bet.label()
+        )));
+    } else {
+        let loss = (elapsed - target).min(15.0);
+        statup.add(bet, -loss);
+        toasts.write(ToastMsg(format!(
+            "⏱ {elapsed:.1}s > {target:.1}s — {} −{loss:.0}%",
+            bet.label()
+        )));
+    }
+}
+
+/// Fait avancer le chrono de la salle courante (seulement en combat actif).
+fn tick_chrono(time: Res<Time>, phase: Res<State<RunPhase>>, mut run: ResMut<RunState>) {
+    if run.chrono_active && *phase.get() == RunPhase::Fighting {
+        run.chrono_elapsed += time.delta_secs();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Détection de fin de salle & gauntlet de boss (GDD §6.3)
 // ---------------------------------------------------------------------------
 
@@ -361,6 +401,7 @@ fn check_room_clear(
     mut run: ResMut<RunState>,
     arena: Res<Arena>,
     mut stats: ResMut<RunStats>,
+    mut statup: ResMut<Stats>,
     augments: Res<Augments>,
     mut toasts: MessageWriter<ToastMsg>,
     mut after: ResMut<AfterAugment>,
@@ -422,11 +463,16 @@ fn check_room_clear(
             }
         }
         RoomKind::Elite => {
+            // La salle d'élite était chronométrée (permissive) : on résout la mise.
+            resolve_chrono(&mut run, &mut statup, &mut toasts);
             // Grosse récompense : un augment (GDD §6.4).
             *after = AfterAugment::Door;
             next_phase.set(RunPhase::Augment);
         }
         _ => {
+            // Fin d'une salle (éventuellement chronométrée) : on résout la mise,
+            // puis on ouvre les portes-stat suivantes.
+            resolve_chrono(&mut run, &mut statup, &mut toasts);
             next_phase.set(RunPhase::DoorOpen);
         }
     }
@@ -439,13 +485,52 @@ fn check_room_clear(
 fn spawn_door(
     state: Res<State<AppState>>,
     arena: Res<Arena>,
+    run: Res<RunState>,
     mut commands: Commands,
     doors: Query<(), With<Door>>,
 ) {
     if *state.get() != AppState::EnRun || !doors.is_empty() {
         return;
     }
-    spawn_door_inner(&mut commands, &arena);
+    // Juste avant le boss : porte simple (pas de mise). Sinon : 3 portes-stat.
+    if run.room_index + 1 >= run.rooms_in_biome {
+        spawn_door_inner(&mut commands, &arena);
+    } else {
+        spawn_stat_doors(&mut commands, &arena);
+    }
+}
+
+/// Les 3 portes-stat (GDD §3.1) : 3 stats distinctes tirées au hasard, une par
+/// porte. Passer par une porte = miser cette stat (la salle d'après est chrono).
+fn spawn_stat_doors(commands: &mut Commands, arena: &Arena) {
+    let mut rng = rand::rng();
+    let mut pool = Stat::ALL.to_vec();
+    pool.shuffle(&mut rng);
+    let xs = [-220.0_f32, 0.0, 220.0];
+    for (i, stat) in pool[0..3].iter().enumerate() {
+        commands
+            .spawn((
+                RoomEntity,
+                Door,
+                DoorChoice(*stat),
+                Sprite::from_color(Color::srgb(0.8, 0.7, 0.4), Vec2::new(84.0, 18.0)),
+                Transform::from_translation(Vec2::new(xs[i], arena.half.y - 4.0).extend(6.0)),
+            ))
+            .with_children(|p| {
+                p.spawn((
+                    Text2d::new(format!("[{}] {}", i + 1, stat.label())),
+                    TextFont { font_size: 15.0, ..default() },
+                    TextColor(Color::srgb(0.85, 0.95, 1.0)),
+                    Transform::from_xyz(0.0, 16.0, 1.0),
+                ));
+                p.spawn((
+                    Text2d::new("miser (E / 1-2-3)"),
+                    TextFont { font_size: 11.0, ..default() },
+                    TextColor(Color::srgb(0.9, 0.85, 0.6)),
+                    Transform::from_xyz(0.0, -20.0, 1.0),
+                ));
+            });
+    }
 }
 
 fn spawn_door_inner(commands: &mut Commands, arena: &Arena) {
@@ -470,92 +555,69 @@ fn door_interact(
     keys: Res<ButtonInput<KeyCode>>,
     mut run: ResMut<RunState>,
     mut build: MessageWriter<BuildRoom>,
-    doors: Query<&Transform, With<Door>>,
+    doors: Query<(&Transform, Option<&DoorChoice>), With<Door>>,
     player: Query<&Transform, With<Player>>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyE) {
-        return;
-    }
     let Ok(player_tf) = player.single() else { return };
-    let Ok(door_tf) = doors.single() else { return };
-    if player_tf
-        .translation
-        .truncate()
-        .distance(door_tf.translation.truncate())
-        > 70.0
-    {
-        return;
+    let ppos = player_tf.translation.truncate();
+
+    // Portes-stat triées par x (gauche→droite) pour la sélection au clavier.
+    let mut stat_doors: Vec<(f32, Stat)> = doors
+        .iter()
+        .filter_map(|(tf, dc)| dc.map(|d| (tf.translation.x, d.0)))
+        .collect();
+    stat_doors.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Choix : Some(Some(stat)) = porte-stat (mise), Some(None) = porte simple (boss).
+    let mut chosen: Option<Option<Stat>> = None;
+
+    // 1/2/3 sélectionnent la porte-stat correspondante.
+    let key_idx = if keys.just_pressed(KeyCode::Digit1) {
+        Some(0)
+    } else if keys.just_pressed(KeyCode::Digit2) {
+        Some(1)
+    } else if keys.just_pressed(KeyCode::Digit3) {
+        Some(2)
+    } else {
+        None
+    };
+    if let Some(i) = key_idx {
+        if let Some((_, stat)) = stat_doors.get(i) {
+            chosen = Some(Some(*stat));
+        }
     }
+
+    // Sinon, E valide la porte la plus proche du joueur.
+    if chosen.is_none() && keys.just_pressed(KeyCode::KeyE) {
+        let mut best: Option<(f32, Option<Stat>)> = None;
+        for (tf, dc) in &doors {
+            let d = tf.translation.truncate().distance(ppos);
+            if d <= 80.0 && best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, dc.map(|x| x.0)));
+            }
+        }
+        if let Some((_, stat)) = best {
+            chosen = Some(stat);
+        }
+    }
+
+    let Some(bet) = chosen else { return };
+    run.pending_bet = bet;
+
     let mut rng = rand::rng();
     run.room_index += 1;
     if run.room_index >= run.rooms_in_biome {
         run.room_kind = RoomKind::Boss;
     } else {
-        // Première salle d'un biome toujours en combat, ensuite ça varie.
-        let roll: f32 = rng.random_range(0.0..1.0);
-        run.room_kind = if roll < 0.70 {
+        // Combat majoritaire, parfois élite. Les salles trésor sont retirées :
+        // le système de portes-stat remplace ces respirations (GDD §6).
+        run.room_kind = if rng.random_bool(0.8) {
             RoomKind::Combat
-        } else if roll < 0.85 {
-            RoomKind::Elite
         } else {
-            RoomKind::Tresor
+            RoomKind::Elite
         };
     }
     build.write(BuildRoom);
-}
-
-fn pedestal_interact(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut commands: Commands,
-    mut augments: ResMut<Augments>,
-    mut toasts: MessageWriter<ToastMsg>,
-    pedestals: Query<(Entity, &Transform, &Pedestal)>,
-    mut player: Query<(&Transform, &mut Health), With<Player>>,
-) {
-    if !keys.just_pressed(KeyCode::KeyE) {
-        return;
-    }
-    let Ok((player_tf, mut health)) = player.single_mut() else {
-        return;
-    };
-    let player_pos = player_tf.translation.truncate();
-    let mut taken = false;
-    let mut rng = rand::rng();
-    for (_, tf, pedestal) in &pedestals {
-        if tf.translation.truncate().distance(player_pos) > 50.0 {
-            continue;
-        }
-        taken = true;
-        match pedestal.0 {
-            Reward::Soin => {
-                health.hp = (health.hp + 20.0).min(health.max);
-                toasts.write(ToastMsg("+20 PV. Ça repousse.".into()));
-            }
-            Reward::Pattes => {
-                let pos = tf.translation.truncate();
-                for _ in 0..35 {
-                    let offset =
-                        Vec2::new(rng.random_range(-60.0..60.0), rng.random_range(-40.0..40.0));
-                    commands.spawn((
-                        Sprite::from_color(Color::srgb(0.95, 0.85, 0.5), Vec2::new(7.0, 3.0)),
-                        Transform::from_translation((pos + offset).extend(5.0)),
-                        PattePickup(1),
-                        Lifetime::secs(15.0),
-                    ));
-                }
-                toasts.write(ToastMsg("Une pluie de pattes ! Le bousier serait fier.".into()));
-            }
-            Reward::AugmentAleatoire => {
-                grant_random(&mut augments, &mut toasts);
-            }
-        }
-        break;
-    }
-    if taken {
-        for (e, _, _) in &pedestals {
-            commands.entity(e).despawn();
-        }
-    }
 }
 
 // ---------------------------------------------------------------------------

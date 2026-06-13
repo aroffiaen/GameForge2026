@@ -154,20 +154,6 @@ pub fn roll_offer(augments: &Augments, n: usize) -> Vec<Augment> {
     available
 }
 
-/// Donne immédiatement un augment aléatoire (salles trésor).
-pub fn grant_random(
-    augments: &mut Augments,
-    toasts: &mut MessageWriter<ToastMsg>,
-) {
-    let offer = roll_offer(augments, 1);
-    if let Some(a) = offer.first() {
-        augments.0.push(*a);
-        toasts.write(ToastMsg(format!("Augment trouvé : {} !", a.name())));
-    } else {
-        toasts.write(ToastMsg("Le pool d'augments est à sec…".into()));
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Plugin & UI de choix
 // ---------------------------------------------------------------------------

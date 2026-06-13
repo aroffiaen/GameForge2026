@@ -35,6 +35,8 @@ struct BossBarName;
 #[derive(Component)]
 struct StatsPanel;
 #[derive(Component)]
+struct ChronoLabel;
+#[derive(Component)]
 struct PauseUi;
 #[derive(Component)]
 struct Toast {
@@ -62,6 +64,7 @@ impl Plugin for UiPlugin {
                     update_center,
                     update_boss_bar,
                     update_stats_panel,
+                    update_chrono,
                 )
                     .run_if(in_state(AppState::EnRun).or(in_state(AppState::Terrasse))),
             )
@@ -191,6 +194,12 @@ fn build_hud(commands: &mut Commands, state: AppState) {
                 TextColor(Color::srgb(0.9, 0.9, 0.8)),
             ));
             p.spawn((
+                ChronoLabel,
+                Text::new(""),
+                TextFont { font_size: 26.0, ..default() },
+                TextColor(Color::srgb(0.6, 1.0, 0.6)),
+            ));
+            p.spawn((
                 BossBarRoot,
                 Node {
                     width: Val::Px(420.0),
@@ -318,7 +327,6 @@ fn update_center(
                     None => "boss".to_string(),
                 },
                 RoomKind::Elite => "élite".to_string(),
-                RoomKind::Tresor => "trésor".to_string(),
                 RoomKind::Combat => format!("salle {}/{}", run.room_index + 1, run.rooms_in_biome),
             };
             format!(
@@ -362,6 +370,23 @@ fn update_boss_bar(
                 text.0 = String::new();
             }
         }
+    }
+}
+
+/// Chrono de la salle courante (GDD §3.4) : vert tant qu'on est dans les temps,
+/// rouge si on dépasse la cible. Vide hors salle chronométrée.
+fn update_chrono(run: Res<RunState>, mut q: Query<(&mut Text, &mut TextColor), With<ChronoLabel>>) {
+    let Ok((mut text, mut color)) = q.single_mut() else { return };
+    if run.chrono_active {
+        let bet = run.bet.map(|s| s.label()).unwrap_or("");
+        text.0 = format!("⏱ {:.1}s / {:.1}s  ({bet})", run.chrono_elapsed, run.chrono_target);
+        color.0 = if run.chrono_elapsed <= run.chrono_target {
+            Color::srgb(0.5, 1.0, 0.5)
+        } else {
+            Color::srgb(1.0, 0.4, 0.3)
+        };
+    } else {
+        text.0.clear();
     }
 }
 
