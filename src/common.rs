@@ -443,14 +443,22 @@ fn poison_tick(
 fn apply_damage(
     mut commands: Commands,
     mut msgs: MessageReader<DamageMsg>,
-    mut q: Query<(&mut Health, &Transform)>,
+    player_stats: Res<PlayerStats>,
+    mut q: Query<(&mut Health, &Transform, Has<Player>)>,
 ) {
     let mut rng = rand::rng();
     for msg in msgs.read() {
-        let Ok((mut health, tf)) = q.get_mut(msg.target) else {
+        let Ok((mut health, tf, is_player)) = q.get_mut(msg.target) else {
             continue;
         };
-        health.hp -= msg.amount;
+        // Stat « Résistance » (GDD §3.3) : ne s'applique qu'aux dégâts subis
+        // par le joueur (dégâts × 100/Rési%).
+        let amount = if is_player {
+            msg.amount * player_stats.incoming_mult
+        } else {
+            msg.amount
+        };
+        health.hp -= amount;
         commands
             .entity(msg.target)
             .insert(HitFlash(Timer::from_seconds(0.08, TimerMode::Once)));
@@ -463,7 +471,7 @@ fn apply_damage(
         spawn_floaty(
             &mut commands,
             tf.translation.truncate() + jitter + Vec2::Y * 16.0,
-            format!("{}", msg.amount.round().max(1.0) as i32),
+            format!("{}", amount.round().max(1.0) as i32),
             color,
             13.0,
         );

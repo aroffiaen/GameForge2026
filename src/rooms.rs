@@ -9,6 +9,7 @@ use crate::common::*;
 use crate::enemies::{spawn_enemy, EnemyKind};
 use crate::meta::MetaSave;
 use crate::player::{spawn_player, PlayerStats};
+use crate::stats::Stats;
 use crate::weapons::PoisonPuddle;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -120,6 +121,7 @@ fn start_run(
     sprites: Res<GameSprites>,
     mut run: ResMut<RunState>,
     mut stats: ResMut<RunStats>,
+    mut statup: ResMut<Stats>,
     mut augments: ResMut<Augments>,
     mut meta: ResMut<MetaSave>,
     mut arena: ResMut<Arena>,
@@ -127,6 +129,7 @@ fn start_run(
 ) {
     let mut rng = rand::rng();
     *stats = RunStats::default();
+    statup.reset(); // chaque run repart à 100 % sur les 7 stats (GDD §3.3)
     augments.0.clear();
     meta.tools_bought_this_cycle = 0;
     meta.runs += 1;
@@ -143,7 +146,7 @@ fn start_run(
     };
     arena.half = Vec2::new(550.0, 310.0);
 
-    let stats_now = PlayerStats::compute(&meta, &Augments::default());
+    let stats_now = PlayerStats::compute(&meta, &Augments::default(), &statup);
     let player = spawn_player(&mut commands, &sprites, &stats_now, Vec2::new(0.0, -240.0));
     commands.entity(player).insert(DespawnOnExit(AppState::EnRun));
 

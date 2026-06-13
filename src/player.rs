@@ -7,6 +7,7 @@ use rand::prelude::*;
 use crate::augments::{Augment, Augments};
 use crate::common::*;
 use crate::meta::MetaSave;
+use crate::stats::Stats;
 use crate::weapons::DamageMsgExt;
 
 // Dash court et net : une esquive de distance fixe (~100 px), pas un long
@@ -33,41 +34,56 @@ pub struct PlayerStats {
     pub rake_mult: f32,
     pub kb_mult: f32,
     pub pattes_mult: f32,
+    // --- Refonte v0.3 : effets des stats-up (GDD §3.3) ---
+    /// Multiplicateur d'intervalle d'attaque (= 100/AS%). Plus petit = plus rapide.
+    pub attack_cd_mult: f32,
+    /// Régénération passive en HP/s (= 1.0 × Régén%/100).
+    pub regen_hps: f32,
+    /// Multiplicateur des dégâts subis (= 100/Rési%). Plus petit = plus résistant.
+    pub incoming_mult: f32,
 }
 
 impl Default for PlayerStats {
     fn default() -> Self {
-        Self::compute(&MetaSave::default(), &Augments::default())
+        Self::compute(&MetaSave::default(), &Augments::default(), &Stats::default())
     }
 }
 
 impl PlayerStats {
-    pub fn compute(meta: &MetaSave, augments: &Augments) -> Self {
+    /// Calcule les stats effectives. Les 7 stats-up (GDD §3.3) se **multiplient**
+    /// par-dessus la base méta+augments (neutres à 100 %), de sorte que la
+    /// méta-progression existante reste valable (GDD §9).
+    pub fn compute(meta: &MetaSave, augments: &Augments, stats: &Stats) -> Self {
         let speed_stacks = augments.count(Augment::JambesDeCriquet) as f32;
         Self {
             // Vitesse de pointe : 250 px/s par défaut → ×2.5 de dégâts au max
             // (cf. SPEED_PER_MULT). Chaque bonus de vitesse relève donc aussi
-            // le plafond de dégâts.
+            // le plafond de dégâts. ×MoveSpeed%/100.
             max_speed: 250.0
                 * (1.0 + 0.05 * meta.up_speed as f32)
-                * (1.0 + 0.15 * speed_stacks),
+                * (1.0 + 0.15 * speed_stacks)
+                * stats.move_mult(),
             // Montée en régime progressive (~0.3 s pour atteindre la pointe) :
             // il faut s'engager dans le mouvement pour gagner sa vitesse.
             accel: 850.0 * if augments.has(Augment::Cafeine) { 1.4 } else { 1.0 },
-            max_hp: 50.0
+            max_hp: (50.0
                 + 8.0 * meta.up_hp as f32
-                + 15.0 * augments.count(Augment::Carapace) as f32,
+                + 15.0 * augments.count(Augment::Carapace) as f32)
+                * stats.pv_mult(),
             dash_charges: 1 + augments.has(Augment::DoubleDetente) as u32,
-            dash_cd: 1.25 * (1.0 - 0.10 * meta.up_dash as f32),
+            dash_cd: 1.25 * (1.0 - 0.10 * meta.up_dash as f32) * stats.dash_cd_mult(),
             dash_iframes: DASH_DURATION
                 + 0.02
                 + if augments.has(Augment::EsquiveFeline) { 0.15 } else { 0.0 },
-            dmg_mult: 1.0 + 0.20 * augments.count(Augment::Aiguillon) as f32,
+            dmg_mult: (1.0 + 0.20 * augments.count(Augment::Aiguillon) as f32) * stats.dmg_mult(),
             aoe_mult: if augments.has(Augment::PelleElargie) { 1.35 } else { 1.0 },
             poison_mult: if augments.has(Augment::PesticideConcentre) { 1.6 } else { 1.0 },
             rake_mult: if augments.has(Augment::RateauAimante) { 1.4 } else { 1.0 },
             kb_mult: if augments.has(Augment::BuseHautePression) { 1.6 } else { 1.0 },
             pattes_mult: 1.0 + 0.15 * meta.up_pattes as f32,
+            attack_cd_mult: stats.attack_cd_mult(),
+            regen_hps: stats.regen_hps(),
+            incoming_mult: stats.incoming_mult(),
         }
     }
 }
@@ -181,6 +197,7 @@ impl Plugin for PlayerPlugin {
                     tint_body,
                     momentum_system,
                     photosynthese,
+                    regen_health,
                 )
                     .in_set(GameSet::Post)
                     .run_if(player_active),
@@ -289,10 +306,11 @@ fn timer_done(secs: f32) -> Timer {
 fn recompute_stats(
     meta: Res<MetaSave>,
     augments: Res<Augments>,
+    statup: Res<Stats>,
     mut stats: ResMut<PlayerStats>,
     mut player: Query<&mut Health, With<Player>>,
 ) {
-    let new = PlayerStats::compute(&meta, &augments);
+    let new = PlayerStats::compute(&meta, &augments, &statup);
     // Si les PV max montent (Carapace, achat…), on crédite la différence.
     if let Ok(mut health) = player.single_mut() {
         let delta = new.max_hp - health.max;
@@ -601,6 +619,24 @@ fn tint_body(
         };
     } else {
         sprite.color = Color::WHITE;
+    }
+}
+
+/// Régénération passive de PV (stat « Régén », GDD §3.3). Ne ressuscite pas un
+/// joueur déjà mort (hp ≤ 0 est géré par la mort).
+fn regen_health(
+    time: Res<Time>,
+    stats: Res<PlayerStats>,
+    mut player: Query<&mut Health, With<Player>>,
+) {
+    if stats.regen_hps <= 0.0 {
+        return;
+    }
+    let Ok(mut health) = player.single_mut() else {
+        return;
+    };
+    if health.hp > 0.0 && health.hp < health.max {
+        health.hp = (health.hp + stats.regen_hps * time.delta_secs()).min(health.max);
     }
 }
 

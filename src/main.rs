@@ -13,6 +13,7 @@ mod healthbar;
 mod meta;
 mod player;
 mod rooms;
+mod stats;
 mod terrasse;
 mod ui;
 mod weapons;
@@ -77,6 +78,7 @@ fn main() {
         .add_plugins((
             common::CorePlugin,
             meta::MetaPlugin,
+            stats::StatsPlugin,
             player::PlayerPlugin,
             weapons::WeaponsPlugin,
             enemies::EnemiesPlugin,

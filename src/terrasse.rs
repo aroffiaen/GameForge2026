@@ -64,6 +64,7 @@ fn enter_terrasse(
     run: Res<RunState>,
     meta: Res<MetaSave>,
     augments: Res<crate::augments::Augments>,
+    statup: Res<crate::stats::Stats>,
     mut stats: ResMut<RunStats>,
     mut toasts: MessageWriter<ToastMsg>,
 ) {
@@ -100,7 +101,7 @@ fn enter_terrasse(
     }
 
     // Le joueur arrive avec son build de run (ou à nu en accès direct).
-    let player_stats = PlayerStats::compute(&meta, &augments);
+    let player_stats = PlayerStats::compute(&meta, &augments, &statup);
     let player = spawn_player(&mut commands, &sprites, &player_stats, Vec2::ZERO);
     commands
         .entity(player)

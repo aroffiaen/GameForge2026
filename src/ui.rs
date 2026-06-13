@@ -6,6 +6,7 @@ use crate::common::*;
 use crate::meta::MetaSave;
 use crate::player::{Dash, SpeedInfo};
 use crate::rooms::{RoomKind, RunState};
+use crate::stats::{Stat, Stats};
 use crate::terrasse::TerrasseState;
 use crate::weapons::{def as weapon_def, Loadout, WeaponCds};
 
@@ -31,6 +32,8 @@ struct BossBarRoot;
 struct BossBarFill;
 #[derive(Component)]
 struct BossBarName;
+#[derive(Component)]
+struct StatsPanel;
 #[derive(Component)]
 struct PauseUi;
 #[derive(Component)]
@@ -58,6 +61,7 @@ impl Plugin for UiPlugin {
                     update_speed,
                     update_center,
                     update_boss_bar,
+                    update_stats_panel,
                 )
                     .run_if(in_state(AppState::EnRun).or(in_state(AppState::Terrasse))),
             )
@@ -214,6 +218,29 @@ fn build_hud(commands: &mut Commands, state: AppState) {
                 TextColor(Color::srgb(0.9, 0.6, 0.8)),
             ));
         });
+
+    // Bas-gauche : panneau des 7 stats-up (GDD §3.4).
+    commands
+        .spawn((
+            DespawnOnExit(state),
+            Node {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(10.0),
+                left: Val::Px(12.0),
+                padding: UiRect::all(Val::Px(6.0)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.05, 0.05, 0.05, 0.6)),
+            GlobalZIndex(10),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                StatsPanel,
+                Text::new(""),
+                TextFont { font_size: 13.0, ..default() },
+                TextColor(Color::srgb(0.8, 0.9, 0.85)),
+            ));
+        });
 }
 
 // ---------------------------------------------------------------------------
@@ -336,6 +363,22 @@ fn update_boss_bar(
             }
         }
     }
+}
+
+/// Affiche les 7 stats-up (%) sur deux lignes (GDD §3.4).
+fn update_stats_panel(statup: Res<Stats>, mut q: Query<&mut Text, With<StatsPanel>>) {
+    let Ok(mut text) = q.single_mut() else { return };
+    let cell = |s: Stat| format!("{} {:.0}%", s.label(), statup.get(s));
+    text.0 = format!(
+        "{}   {}   {}   {}\n{}   {}   {}",
+        cell(Stat::Pv),
+        cell(Stat::Regen),
+        cell(Stat::Dmg),
+        cell(Stat::Resistance),
+        cell(Stat::MoveSpeed),
+        cell(Stat::AttackSpeed),
+        cell(Stat::DashCd),
+    );
 }
 
 // ---------------------------------------------------------------------------

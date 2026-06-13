@@ -147,10 +147,12 @@ fn enter_cabanon(
     mut arena: ResMut<Arena>,
     mut clear_color: ResMut<ClearColor>,
     mut augments: ResMut<crate::augments::Augments>,
+    mut statup: ResMut<crate::stats::Stats>,
     mut run: ResMut<crate::rooms::RunState>,
 ) {
     *overlay = HubOverlay::None;
     augments.0.clear();
+    statup.reset(); // pas de stat-up dans le hub (accès direct Terrasse = à nu)
     run.came_from_run = false;
     arena.half = Vec2::new(280.0, 160.0);
     clear_color.0 = Color::srgb(0.10, 0.08, 0.06);
@@ -167,7 +169,7 @@ fn enter_cabanon(
         loadout.0[0] = Some(WeaponKind::Poings);
     }
 
-    let stats = PlayerStats::compute(&meta, &crate::augments::Augments::default());
+    let stats = PlayerStats::compute(&meta, &crate::augments::Augments::default(), &statup);
     let player = spawn_player(&mut commands, &sprites, &stats, Vec2::new(-60.0, -60.0));
     commands
         .entity(player)

@@ -290,7 +290,7 @@ fn strike_system(
         if !slot_pressed(&buttons, slot, true) || cds.0[slot] > 0.0 {
             continue;
         }
-        cds.0[slot] = weapon.cd;
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
         swings.0[slot] = 0.14;
 
         let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
@@ -348,7 +348,7 @@ fn rake_system(
         if !slot_pressed(&buttons, slot, true) || cds.0[slot] > 0.0 {
             continue;
         }
-        cds.0[slot] = weapon.cd;
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
         swings.0[slot] = 0.2;
 
         let radius = weapon.radius * stats.rake_mult;
@@ -410,7 +410,7 @@ fn arrosoir_system(
         if !slot_pressed(&buttons, slot, false) || cds.0[slot] > 0.0 {
             continue;
         }
-        cds.0[slot] = weapon.cd;
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
         spawn_puddle(
             &mut commands,
             player_tf.translation.truncate(),
@@ -494,7 +494,7 @@ fn karcher_system(
         if !slot_pressed(&buttons, slot, false) || cds.0[slot] > 0.0 {
             continue;
         }
-        cds.0[slot] = weapon.cd;
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
 
         let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
         let tick_dmg =
