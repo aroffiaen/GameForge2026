@@ -62,8 +62,10 @@ pub struct WeaponDef {
     pub cd: f32,
     /// Portée (px). 0 = AoE centrée sur le joueur (anneau).
     pub range: f32,
-    /// Rayon d'effet (px) pour les AoE centrées / la traînée.
+    /// Rayon d'effet externe (px) pour les AoE centrées / la traînée.
     pub radius: f32,
+    /// Rayon interne (px) : trou central des AoE en anneau (0 = disque plein).
+    pub inner: f32,
     /// Angle total du cône (degrés) pour les armes coniques. 0 = sans objet.
     pub cone: f32,
     pub color: Color,
@@ -76,10 +78,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Pesticide",
             desc: "Maintien : pose une traînée de poison au sol (DoT).",
             profile: Profile::Hold,
-            dmg: 14.0, // DPS du poison
+            dmg: 15.0, // DPS du poison (cible ~15)
             cd: 0.09,  // intervalle de dépôt
             range: 0.0,
             radius: 26.0,
+            inner: 0.0,
             cone: 0.0,
             color: Color::srgb(0.35, 0.65, 0.9),
             size: Vec2::new(14.0, 10.0),
@@ -88,10 +91,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Pelle",
             desc: "Frappe : coup de zone en anneau autour de toi (Q de Darius).",
             profile: Profile::Strike,
-            dmg: 26.0,
-            cd: 0.7,
-            range: 0.0,   // centré sur le joueur
-            radius: 78.0, // rayon de l'anneau
+            dmg: 18.0, // ~15 DPS (18/1.2)
+            cd: 1.2,
+            range: 0.0,    // centré sur le joueur
+            radius: 102.0, // rayon externe de l'anneau (mid-range)
+            inner: 44.0,   // trou central : ne touche pas au corps-à-corps
             cone: 0.0,
             color: Color::srgb(0.6, 0.6, 0.68),
             size: Vec2::new(24.0, 8.0),
@@ -104,7 +108,8 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             cd: 1.8,
             range: 230.0, // allonge de l'aspiration
             radius: 0.0,
-            cone: 110.0, // cône frontal
+            inner: 0.0,
+            cone: 90.0, // cône frontal
             color: Color::srgb(0.7, 0.5, 0.3),
             size: Vec2::new(20.0, 6.0),
         },
@@ -112,10 +117,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Karcher",
             desc: "Maintien : jet en éventail 60°, dégâts soutenus.",
             profile: Profile::Hold,
-            dmg: 34.0, // DPS du jet
+            dmg: 15.0, // DPS du jet (cible ~15)
             cd: 0.07,  // intervalle de tick
             range: 235.0,
             radius: 16.0,
+            inner: 0.0,
             cone: 60.0,
             color: Color::srgb(0.95, 0.85, 0.2),
             size: Vec2::new(18.0, 9.0),
@@ -124,10 +130,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Tronçonneuse",
             desc: "Maintien : ligne soutenue. Te ralentit et bloque l'arme 2.",
             profile: Profile::Hold,
-            dmg: 42.0, // DPS de la lame
+            dmg: 16.0, // DPS de la lame (~15, léger bonus pour la contrainte)
             cd: 0.06,  // intervalle de tick
             range: 130.0, // longueur de la ligne
             radius: 22.0, // demi-largeur
+            inner: 0.0,
             cone: 0.0,
             color: Color::srgb(0.85, 0.2, 0.15),
             size: Vec2::new(22.0, 10.0),
@@ -136,10 +143,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Pioche",
             desc: "Frappe : impact de zone à distance moyenne.",
             profile: Profile::Strike,
-            dmg: 30.0,
-            cd: 0.85,
+            dmg: 18.0, // ~15 DPS (18/1.2)
+            cd: 1.2,
             range: 130.0, // distance de l'impact
             radius: 46.0, // rayon de l'impact
+            inner: 0.0,
             cone: 0.0,
             color: Color::srgb(0.5, 0.55, 0.6),
             size: Vec2::new(20.0, 10.0),
@@ -148,10 +156,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Faux",
             desc: "Frappe : grand balayage en cône 50°, longue portée.",
             profile: Profile::Strike,
-            dmg: 22.0,
-            cd: 0.6,
+            dmg: 14.0, // ~15 DPS (14/0.9)
+            cd: 0.9,
             range: 175.0, // allonge du cône
             radius: 0.0,
+            inner: 0.0,
             cone: 50.0,
             color: Color::srgb(0.7, 0.75, 0.78),
             size: Vec2::new(26.0, 8.0),
@@ -160,10 +169,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Hache",
             desc: "Frappe : hache lancée jusqu'au mur. Gros dégâts, long CD.",
             profile: Profile::Utility,
-            dmg: 55.0,
+            dmg: 48.0, // ~30 DPS burst (48/1.6), high risk/high reward
             cd: 1.6,
             range: 720.0, // vitesse du projectile
             radius: 16.0, // rayon de touche du projectile
+            inner: 0.0,
             cone: 0.0,
             color: Color::srgb(0.6, 0.45, 0.3),
             size: Vec2::new(22.0, 12.0),
@@ -172,10 +182,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Serpe",
             desc: "Frappe : balaie presque tout autour (300°), rapide.",
             profile: Profile::Strike,
-            dmg: 15.0,
-            cd: 0.35,
+            dmg: 7.0, // ~15 DPS (7/0.5), frappe légère mais très rapide
+            cd: 0.5,
             range: 78.0, // allonge
             radius: 0.0,
+            inner: 0.0,
             cone: 300.0,
             color: Color::srgb(0.55, 0.7, 0.4),
             size: Vec2::new(18.0, 8.0),
@@ -184,10 +195,11 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Pic de vigne",
             desc: "Frappe : estoc qui s'allonge, du corps-à-corps à longue portée.",
             profile: Profile::Strike,
-            dmg: 28.0,
-            cd: 0.7,
+            dmg: 13.0, // ~15 DPS (13/0.85)
+            cd: 0.85,
             range: 205.0, // allonge de l'estoc
             radius: 0.0,
+            inner: 0.0,
             cone: 16.0, // fin (comme une lance)
             color: Color::srgb(0.4, 0.6, 0.35),
             size: Vec2::new(28.0, 5.0),
@@ -296,7 +308,8 @@ fn slot_blocked_by_chainsaw(
     loadout.0[other] == Some(WeaponKind::Tronconneuse) && slot_pressed(buttons, other, false)
 }
 
-/// Petit FX de balayage en cône (Faux, Serpe, Pic de vigne).
+/// FX de cône **net** (Faux, Serpe, Pic de vigne) : l'arc à la portée + les deux
+/// bords, pour qu'on lise clairement la zone touchée.
 fn spawn_cone_fx(
     commands: &mut Commands,
     origin: Vec2,
@@ -306,15 +319,62 @@ fn spawn_cone_fx(
     color: Color,
 ) {
     let base = dir.to_angle();
-    let cone = cone_deg.to_radians();
-    let n = (cone_deg / 18.0).clamp(3.0, 18.0) as u32;
+    let half = cone_deg.to_radians() * 0.5;
+    // Arc à la portée.
+    let n = (cone_deg / 12.0).clamp(4.0, 30.0) as u32;
     for i in 0..=n {
-        let spread = (i as f32 / n as f32 - 0.5) * cone;
-        let d = Vec2::from_angle(base + spread);
+        let a = base - half + (i as f32 / n as f32) * (2.0 * half);
+        let d = Vec2::from_angle(a);
         commands.spawn((
-            Sprite::from_color(color.with_alpha(0.65), Vec2::splat(6.0)),
-            Transform::from_translation((origin + d * 14.0).extend(9.0)),
-            Velocity(d * reach * 4.0),
+            Sprite::from_color(color.with_alpha(0.85), Vec2::splat(6.0)),
+            Transform::from_translation((origin + d * reach).extend(9.0)),
+            Lifetime::secs(0.2),
+        ));
+    }
+    // Les deux bords du cône.
+    for edge in [-half, half] {
+        let d = Vec2::from_angle(base + edge);
+        for k in 1..=7 {
+            let r = reach * k as f32 / 7.0;
+            commands.spawn((
+                Sprite::from_color(color.with_alpha(0.7), Vec2::splat(5.0)),
+                Transform::from_translation((origin + d * r).extend(9.0)),
+                Lifetime::secs(0.18),
+            ));
+        }
+    }
+}
+
+/// FX d'anneau/disque **net** (Pelle, Pioche) : contour externe (+ contour
+/// interne si trou central) + un remplissage qui balaie la bande.
+fn spawn_ring_fx(commands: &mut Commands, center: Vec2, inner: f32, outer: f32, color: Color) {
+    let n_out = 34;
+    for i in 0..n_out {
+        let d = Vec2::from_angle(i as f32 / n_out as f32 * std::f32::consts::TAU);
+        commands.spawn((
+            Sprite::from_color(color.with_alpha(0.9), Vec2::splat(7.0)),
+            Transform::from_translation((center + d * outer).extend(9.0)),
+            Lifetime::secs(0.22),
+        ));
+    }
+    if inner > 1.0 {
+        let n_in = 24;
+        for i in 0..n_in {
+            let d = Vec2::from_angle(i as f32 / n_in as f32 * std::f32::consts::TAU);
+            commands.spawn((
+                Sprite::from_color(color.with_alpha(0.55), Vec2::splat(5.0)),
+                Transform::from_translation((center + d * inner).extend(9.0)),
+                Lifetime::secs(0.2),
+            ));
+        }
+    }
+    let start = inner.max(8.0);
+    for i in 0..18 {
+        let d = Vec2::from_angle(i as f32 / 18.0 * std::f32::consts::TAU);
+        commands.spawn((
+            Sprite::from_color(color.with_alpha(0.6), Vec2::splat(5.0)),
+            Transform::from_translation((center + d * start).extend(9.0)),
+            Velocity(d * (outer - start + 10.0) * 4.0),
             Lifetime::secs(0.16),
         ));
     }
@@ -434,24 +494,19 @@ fn strike_system(
             }
             spawn_cone_fx(&mut commands, player_pos, aim.dir, reach, weapon.cone, weapon.color);
         } else {
-            // AoE circulaire : centrée sur le joueur (anneau Pelle, range 0) ou
-            // au point visé (impact de la Pioche, range > 0).
+            // AoE en bande [inner, externe] : centrée sur le joueur (anneau de
+            // la Pelle, range 0) ou au point visé (impact de la Pioche, range>0).
+            // `inner > 0` creuse un trou central → ne touche pas au contact.
             let center = player_pos + aim.dir * weapon.range;
-            let radius = weapon.radius * stats.aoe_mult;
+            let outer = weapon.radius * stats.aoe_mult;
+            let inner = weapon.inner;
             for (e, etf, er) in &enemies {
-                if etf.translation.truncate().distance(center) <= radius + er.0 {
+                let dist = etf.translation.truncate().distance(center);
+                if dist <= outer + er.0 && dist + er.0 >= inner {
                     dmg.write_hit(e, amount);
                 }
             }
-            for i in 0..20 {
-                let dir = Vec2::from_angle(i as f32 / 20.0 * std::f32::consts::TAU);
-                commands.spawn((
-                    Sprite::from_color(weapon.color.with_alpha(0.7), Vec2::splat(6.0)),
-                    Transform::from_translation((center + dir * 8.0).extend(9.0)),
-                    Velocity(dir * radius * 5.0),
-                    Lifetime::secs(0.16),
-                ));
-            }
+            spawn_ring_fx(&mut commands, center, inner, outer, weapon.color);
         }
     }
 }
@@ -666,15 +721,16 @@ fn karcher_system(
             }
         }
 
-        // Gouttelettes du jet, réparties sur tout l'éventail.
-        for _ in 0..4 {
+        // Gouttelettes du jet : flashs répartis DANS le cône, sans vélocité —
+        // ils ne « traversent » plus l'écran (ne sont pas des projectiles).
+        for _ in 0..6 {
             let spread = rng.random_range(-half..half);
             let dir = Vec2::from_angle(aim.dir.to_angle() + spread);
+            let dist = rng.random_range(20.0..weapon.range);
             commands.spawn((
                 Sprite::from_color(Color::srgb(0.5, 0.8, 1.0).with_alpha(0.8), Vec2::splat(5.0)),
-                Transform::from_translation((player_pos + dir * 20.0).extend(8.0)),
-                Velocity(dir * rng.random_range(500.0..650.0)),
-                Lifetime::secs(weapon.range / 580.0),
+                Transform::from_translation((player_pos + dir * dist).extend(8.0)),
+                Lifetime::secs(0.12),
             ));
         }
     }
