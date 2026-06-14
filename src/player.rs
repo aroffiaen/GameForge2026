@@ -54,27 +54,23 @@ impl PlayerStats {
     /// par-dessus la base méta+augments (neutres à 100 %), de sorte que la
     /// méta-progression existante reste valable (GDD §9).
     pub fn compute(meta: &MetaSave, augments: &Augments, stats: &Stats) -> Self {
-        let speed_stacks = augments.count(Augment::JambesDeCriquet) as f32;
         Self {
             // Vitesse de pointe : 250 px/s à 100 %, ×MoveSpeed%/100. La vitesse
             // ne donne plus de dégâts par défaut (refonte v0.3, voir Élan).
-            max_speed: 250.0
-                * (1.0 + 0.05 * meta.up_speed as f32)
-                * (1.0 + 0.15 * speed_stacks)
-                * stats.move_mult(),
+            // (Le bonus de vitesse en % brut relève désormais de la stat MoveSpeed.)
+            max_speed: 250.0 * (1.0 + 0.05 * meta.up_speed as f32) * stats.move_mult(),
             // Montée en régime progressive (~0.3 s pour atteindre la pointe) :
             // il faut s'engager dans le mouvement pour gagner sa vitesse.
             accel: 850.0 * if augments.has(Augment::Cafeine) { 1.4 } else { 1.0 },
-            max_hp: (50.0
-                + 8.0 * meta.up_hp as f32
-                + 15.0 * augments.count(Augment::Carapace) as f32)
-                * stats.pv_mult(),
+            // Les PV en % brut relèvent de la stat PV ; la méta garde son bonus.
+            max_hp: (50.0 + 8.0 * meta.up_hp as f32) * stats.pv_mult(),
             dash_charges: 1 + augments.has(Augment::DoubleDetente) as u32,
             dash_cd: 1.25 * (1.0 - 0.10 * meta.up_dash as f32) * stats.dash_cd_mult(),
             dash_iframes: DASH_DURATION
                 + 0.02
                 + if augments.has(Augment::EsquiveFeline) { 0.15 } else { 0.0 },
-            dmg_mult: (1.0 + 0.20 * augments.count(Augment::Aiguillon) as f32) * stats.dmg_mult(),
+            // Les dégâts en % brut relèvent de la stat DMG.
+            dmg_mult: stats.dmg_mult(),
             aoe_mult: if augments.has(Augment::PelleElargie) { 1.35 } else { 1.0 },
             poison_mult: if augments.has(Augment::PesticideConcentre) { 1.6 } else { 1.0 },
             rake_mult: if augments.has(Augment::RateauAimante) { 1.4 } else { 1.0 },
@@ -312,7 +308,7 @@ fn recompute_stats(
     mut player: Query<&mut Health, With<Player>>,
 ) {
     let new = PlayerStats::compute(&meta, &augments, &statup);
-    // Si les PV max montent (Carapace, achat…), on crédite la différence.
+    // Si les PV max montent (stat PV, achat méta…), on crédite la différence.
     if let Ok(mut health) = player.single_mut() {
         let delta = new.max_hp - health.max;
         if delta.abs() > 0.01 {

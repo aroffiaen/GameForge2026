@@ -284,8 +284,8 @@ Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash,
 - [x] Adapter palettes / bestiaires par biome.
 
 ### H. Nettoyage
-- [ ] **Supprimer salles trésor & secrètes.**
-- [ ] Trier le **pool d'augments** : enlever les augments de **% brut** (doublons des stats), garder les **mécaniques**.
+- [x] **Supprimer salles trésor & secrètes.** *(fait en B)*
+- [x] Trier le **pool d'augments** : enlever les augments de **% brut** (doublons des stats), garder les **mécaniques**. *(Jambes de criquet, Aiguillon, Carapace retirés ; Café du bousier conservé car « accélération » ≠ stat.)*
 
 ---
 

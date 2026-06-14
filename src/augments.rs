@@ -5,10 +5,12 @@ use rand::prelude::*;
 
 use crate::common::*;
 
+// Tri v0.3 (§18.H) : les augments de **% brut** (vitesse, dégâts, PV) ont été
+// retirés — ils font désormais doublon avec le système de stats (partie A).
+// Ne restent que des **mécaniques / keystones / mods d'arme** (GDD §9).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Augment {
     // Vitesse / élan
-    JambesDeCriquet,
     Cafeine,
     Adrenaline,
     /// L'ancienne mécanique signature, devenue optionnelle (GDD §4.x) :
@@ -24,7 +26,6 @@ pub enum Augment {
     RateauAimante,
     BuseHautePression,
     PelleElargie,
-    Aiguillon,
     // Momentum / on-the-move
     Momentum,
     Photosynthese,
@@ -32,12 +33,10 @@ pub enum Augment {
     Epidemie,
     TraineeToxique,
     // Défensif (mesuré)
-    Carapace,
     Rosee,
 }
 
 pub const POOL: &[Augment] = &[
-    Augment::JambesDeCriquet,
     Augment::Cafeine,
     Augment::Adrenaline,
     Augment::Elan,
@@ -49,19 +48,16 @@ pub const POOL: &[Augment] = &[
     Augment::RateauAimante,
     Augment::BuseHautePression,
     Augment::PelleElargie,
-    Augment::Aiguillon,
     Augment::Momentum,
     Augment::Photosynthese,
     Augment::Epidemie,
     Augment::TraineeToxique,
-    Augment::Carapace,
     Augment::Rosee,
 ];
 
 impl Augment {
     pub fn name(self) -> &'static str {
         match self {
-            Augment::JambesDeCriquet => "Jambes de criquet",
             Augment::Cafeine => "Café du bousier",
             Augment::Adrenaline => "Adrénaline",
             Augment::Elan => "Élan",
@@ -73,19 +69,16 @@ impl Augment {
             Augment::RateauAimante => "Râteau aimanté",
             Augment::BuseHautePression => "Buse haute pression",
             Augment::PelleElargie => "Pelle élargie",
-            Augment::Aiguillon => "Aiguillon",
             Augment::Momentum => "Momentum",
             Augment::Photosynthese => "Photosynthèse",
             Augment::Epidemie => "Épidémie",
             Augment::TraineeToxique => "Traînée toxique",
-            Augment::Carapace => "Carapace de fortune",
             Augment::Rosee => "Rosée du matin",
         }
     }
 
     pub fn desc(self) -> &'static str {
         match self {
-            Augment::JambesDeCriquet => "+15 % de vitesse max.",
             Augment::Cafeine => "+30 % d'accélération. Nerveux.",
             Augment::Adrenaline => "Sous 30 % de PV : +25 % de vitesse.",
             Augment::Elan => "L'élan paie : dégâts ×0,8 à l'arrêt → ×1,5 à pleine vitesse.",
@@ -97,22 +90,20 @@ impl Augment {
             Augment::RateauAimante => "Râteau : rayon +40 % et ralentit 1,5 s.",
             Augment::BuseHautePression => "Karcher : +25 % dégâts, recul ×1,6.",
             Augment::PelleElargie => "Armes de frappe : zone +35 %.",
-            Augment::Aiguillon => "+20 % de dégâts de base.",
             Augment::Momentum => "+2 %/s de dégâts en mouvement (max +40 %).",
             Augment::Photosynthese => "Régénère 2 PV/s au-dessus de 70 % de vitesse.",
             Augment::Epidemie => "KEYSTONE : le poison se propage à la mort.",
             Augment::TraineeToxique => "KEYSTONE : le dash laisse du pesticide.",
-            Augment::Carapace => "+15 PV max. Restons raisonnables.",
             Augment::Rosee => "Soigne 12 PV après chaque boss.",
         }
     }
 
-    /// Certains augments se cumulent, les autres sont uniques dans un build.
+    /// Depuis le tri v0.3, plus aucun augment ne se cumule : les seuls
+    /// cumulables étaient les % bruts, partis dans le système de stats.
+    /// Conservé pour `roll_offer` (qui exclut les augments déjà pris).
     pub fn stackable(self) -> bool {
-        matches!(
-            self,
-            Augment::JambesDeCriquet | Augment::Aiguillon | Augment::Carapace
-        )
+        let _ = self;
+        false
     }
 }
 
@@ -127,9 +118,6 @@ pub struct Augments(pub Vec<Augment>);
 impl Augments {
     pub fn has(&self, a: Augment) -> bool {
         self.0.contains(&a)
-    }
-    pub fn count(&self, a: Augment) -> u32 {
-        self.0.iter().filter(|x| **x == a).count() as u32
     }
 }
 
