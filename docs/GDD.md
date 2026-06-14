@@ -273,10 +273,10 @@ Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash,
 - [x] Retirer l'écran de **choix de biome** (la transition se fait via les portes-stat post-boss).
 
 ### F. Armes
-- [ ] **Retrait global du knockback** (toutes armes).
-- [ ] Roster **10 armes** avec leurs comportements (§5) : Pesticide (toggle), Pelle (AoE cercle, 1 main), Râteau (pull devant), Karcher (spray 60°, toggle), Tronçonneuse (ligne, toggle, ralentit + bloque arme 2), Pioche (zone midrange), Faux (cône 50°), Hache (lancé longue portée, gros CD), Serpe (AoE 300° rapide), Pic de vigne (lance).
-- [ ] Mécanique **Maintien** (hold-to-shoot, sans coût ni CD continu) pour Pesticide / Karcher / Tronçonneuse.
-- [ ] **Dual wield** : 2 armes différentes, pas de doublon.
+- [x] **Retrait global du knockback** (toutes armes). *(champ kb et kb_mult supprimés)*
+- [x] Roster **10 armes** avec leurs comportements (§5) : Pesticide (Maintien), Pelle (AoE anneau), Râteau (pull cône devant), Karcher (spray 60°, Maintien), Tronçonneuse (ligne, Maintien, ralentit + bloque arme 2), Pioche (zone midrange), Faux (cône 50°), Hache (lancée jusqu'au mur, gros CD), Serpe (AoE 300° rapide), Pic de vigne (estoc). *(valeurs chiffrées à tuner au playtest)*
+- [x] Mécanique **Maintien** (hold-to-shoot, sans coût ni CD continu) pour Pesticide / Karcher / Tronçonneuse.
+- [x] **Dual wield** : 2 armes différentes, pas de doublon. *(garanti par le toggle de l'établi)*
 
 ### G. Biomes / contenu
 - [x] **6 biomes** : Jardin, Gravier, Boue, Terre Sèche, Potager, Dalles (+ Terrasse finale).

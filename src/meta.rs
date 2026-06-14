@@ -45,7 +45,16 @@ impl Default for MetaSave {
             pattes: 0,
             total_kills: 0,
             unlocked: vec![WeaponKind::Pelle],
-            claimable: Vec::new(),
+            // Les 6 armes de la refonte (Lot 2) sont rachetables d'emblée
+            // chez le bousier (pas de gate d'accomplissement dédiée).
+            claimable: vec![
+                WeaponKind::Pioche,
+                WeaponKind::Serpe,
+                WeaponKind::Faux,
+                WeaponKind::PicDeVigne,
+                WeaponKind::Hache,
+                WeaponKind::Tronconneuse,
+            ],
             achievements: Vec::new(),
             bosses_beaten: Vec::new(),
             up_hp: 0,
@@ -113,6 +122,12 @@ pub fn tool_price(w: WeaponKind) -> u64 {
         WeaponKind::Pesticide => 100,
         WeaponKind::Rateau => 140,
         WeaponKind::Karcher => 220,
+        WeaponKind::Pioche => 160,
+        WeaponKind::Serpe => 180,
+        WeaponKind::Faux => 200,
+        WeaponKind::PicDeVigne => 240,
+        WeaponKind::Hache => 280,
+        WeaponKind::Tronconneuse => 300,
     }
 }
 
@@ -123,6 +138,12 @@ pub fn tool_condition(w: WeaponKind) -> &'static str {
         WeaponKind::Pesticide => "Dézingue 100 insectes (en cumulé).",
         WeaponKind::Rateau => "Bats ton premier boss.",
         WeaponKind::Karcher => "Atteins la Terrasse.",
+        WeaponKind::Pioche
+        | WeaponKind::Serpe
+        | WeaponKind::Faux
+        | WeaponKind::PicDeVigne
+        | WeaponKind::Hache
+        | WeaponKind::Tronconneuse => "Disponible au rachat chez le bousier.",
     }
 }
 

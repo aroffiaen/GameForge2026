@@ -6,6 +6,12 @@
         Rateau,
         Pelle,
         Karcher,
+        Tronconneuse,
+        Pioche,
+        Faux,
+        Hache,
+        Serpe,
+        PicDeVigne,
     ],
     claimable: [],
     achievements: [

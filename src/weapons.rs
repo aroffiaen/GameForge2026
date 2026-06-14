@@ -13,16 +13,22 @@ use crate::player::{Aim, Dash, Momentum, PlayerStats, SpeedInfo};
 // Définition des armes
 // ---------------------------------------------------------------------------
 
-// Refonte v0.3 §18.F — Lot 1 : roster strict (Poings/Petite pelle retirés,
-// Arrosoir → Pesticide), **plus aucun knockback** (retrait global, GDD §5).
-// Les 6 armes restantes (Tronçonneuse, Pioche, Faux, Hache, Serpe, Pic de vigne)
-// arrivent en Lot 2.
+// Refonte v0.3 §18.F : roster strict des **10 armes** (GDD §5), **plus aucun
+// knockback** (retrait global). Profils : Frappe (Strike), Maintien (Hold,
+// hold-to-shoot), et Utility (Frappe à système dédié : Râteau aspire, Hache
+// se lance).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum WeaponKind {
     Pesticide,
     Pelle,
     Rateau,
     Karcher,
+    Tronconneuse,
+    Pioche,
+    Faux,
+    Hache,
+    Serpe,
+    PicDeVigne,
 }
 
 pub const ALL_WEAPONS: &[WeaponKind] = &[
@@ -30,6 +36,12 @@ pub const ALL_WEAPONS: &[WeaponKind] = &[
     WeaponKind::Pelle,
     WeaponKind::Rateau,
     WeaponKind::Karcher,
+    WeaponKind::Tronconneuse,
+    WeaponKind::Pioche,
+    WeaponKind::Faux,
+    WeaponKind::Hache,
+    WeaponKind::Serpe,
+    WeaponKind::PicDeVigne,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -108,6 +120,78 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             color: Color::srgb(0.95, 0.85, 0.2),
             size: Vec2::new(18.0, 9.0),
         },
+        WeaponKind::Tronconneuse => WeaponDef {
+            name: "Tronçonneuse",
+            desc: "Maintien : ligne soutenue. Te ralentit et bloque l'arme 2.",
+            profile: Profile::Hold,
+            dmg: 42.0, // DPS de la lame
+            cd: 0.06,  // intervalle de tick
+            range: 130.0, // longueur de la ligne
+            radius: 22.0, // demi-largeur
+            cone: 0.0,
+            color: Color::srgb(0.85, 0.2, 0.15),
+            size: Vec2::new(22.0, 10.0),
+        },
+        WeaponKind::Pioche => WeaponDef {
+            name: "Pioche",
+            desc: "Frappe : impact de zone à distance moyenne.",
+            profile: Profile::Strike,
+            dmg: 30.0,
+            cd: 0.85,
+            range: 130.0, // distance de l'impact
+            radius: 46.0, // rayon de l'impact
+            cone: 0.0,
+            color: Color::srgb(0.5, 0.55, 0.6),
+            size: Vec2::new(20.0, 10.0),
+        },
+        WeaponKind::Faux => WeaponDef {
+            name: "Faux",
+            desc: "Frappe : grand balayage en cône 50°, longue portée.",
+            profile: Profile::Strike,
+            dmg: 22.0,
+            cd: 0.6,
+            range: 175.0, // allonge du cône
+            radius: 0.0,
+            cone: 50.0,
+            color: Color::srgb(0.7, 0.75, 0.78),
+            size: Vec2::new(26.0, 8.0),
+        },
+        WeaponKind::Hache => WeaponDef {
+            name: "Hache",
+            desc: "Frappe : hache lancée jusqu'au mur. Gros dégâts, long CD.",
+            profile: Profile::Utility,
+            dmg: 55.0,
+            cd: 1.6,
+            range: 720.0, // vitesse du projectile
+            radius: 16.0, // rayon de touche du projectile
+            cone: 0.0,
+            color: Color::srgb(0.6, 0.45, 0.3),
+            size: Vec2::new(22.0, 12.0),
+        },
+        WeaponKind::Serpe => WeaponDef {
+            name: "Serpe",
+            desc: "Frappe : balaie presque tout autour (300°), rapide.",
+            profile: Profile::Strike,
+            dmg: 15.0,
+            cd: 0.35,
+            range: 78.0, // allonge
+            radius: 0.0,
+            cone: 300.0,
+            color: Color::srgb(0.55, 0.7, 0.4),
+            size: Vec2::new(18.0, 8.0),
+        },
+        WeaponKind::PicDeVigne => WeaponDef {
+            name: "Pic de vigne",
+            desc: "Frappe : estoc qui s'allonge, du corps-à-corps à longue portée.",
+            profile: Profile::Strike,
+            dmg: 28.0,
+            cd: 0.7,
+            range: 205.0, // allonge de l'estoc
+            radius: 0.0,
+            cone: 16.0, // fin (comme une lance)
+            color: Color::srgb(0.4, 0.6, 0.35),
+            size: Vec2::new(28.0, 5.0),
+        },
     }
 }
 
@@ -136,6 +220,19 @@ pub struct WeaponSprite(pub usize);
 /// Animation de coup en cours sur un slot.
 #[derive(Resource, Default)]
 pub struct SwingAnims(pub [f32; 2]);
+
+/// Vrai tant qu'une tronçonneuse est tenue ce frame : ralentit le joueur
+/// (lu par `movement`) et bloque l'autre slot.
+#[derive(Resource, Default)]
+pub struct ChainsawActive(pub bool);
+
+/// Hache lancée : traverse jusqu'au mur, touche chaque ennemi une fois.
+#[derive(Component)]
+pub struct ThrownAxe {
+    pub dmg: f32,
+    pub radius: f32,
+    pub hit: Vec<Entity>,
+}
 
 /// Flaque de pesticide posée par le joueur (GDD §4.3).
 #[derive(Component)]
@@ -188,6 +285,41 @@ fn slot_pressed(buttons: &ButtonInput<MouseButton>, slot: usize, just: bool) -> 
     }
 }
 
+/// `slot` est-il bloqué parce que l'AUTRE slot tient une tronçonneuse active ?
+/// (GDD §5 : « tant qu'active, arme 2 inutilisable ».)
+fn slot_blocked_by_chainsaw(
+    loadout: &Loadout,
+    buttons: &ButtonInput<MouseButton>,
+    slot: usize,
+) -> bool {
+    let other = 1 - slot;
+    loadout.0[other] == Some(WeaponKind::Tronconneuse) && slot_pressed(buttons, other, false)
+}
+
+/// Petit FX de balayage en cône (Faux, Serpe, Pic de vigne).
+fn spawn_cone_fx(
+    commands: &mut Commands,
+    origin: Vec2,
+    dir: Vec2,
+    reach: f32,
+    cone_deg: f32,
+    color: Color,
+) {
+    let base = dir.to_angle();
+    let cone = cone_deg.to_radians();
+    let n = (cone_deg / 18.0).clamp(3.0, 18.0) as u32;
+    for i in 0..=n {
+        let spread = (i as f32 / n as f32 - 0.5) * cone;
+        let d = Vec2::from_angle(base + spread);
+        commands.spawn((
+            Sprite::from_color(color.with_alpha(0.65), Vec2::splat(6.0)),
+            Transform::from_translation((origin + d * 14.0).extend(9.0)),
+            Velocity(d * reach * 4.0),
+            Lifetime::secs(0.16),
+        ));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -199,6 +331,7 @@ impl Plugin for WeaponsPlugin {
         app.init_resource::<Loadout>()
             .init_resource::<WeaponCds>()
             .init_resource::<SwingAnims>()
+            .init_resource::<ChainsawActive>()
             .add_systems(
                 Update,
                 (
@@ -207,6 +340,9 @@ impl Plugin for WeaponsPlugin {
                     rake_system,
                     pesticide_system,
                     karcher_system,
+                    chainsaw_system,
+                    axe_system,
+                    thrown_axe_system,
                     dash_trail_system,
                 )
                     .in_set(GameSet::Combat)
@@ -221,8 +357,16 @@ impl Plugin for WeaponsPlugin {
             .add_systems(
                 Update,
                 sync_weapon_sprites.in_set(GameSet::Post).run_if(player_active),
-            );
+            )
+            // Évite que le ralentissement « tronçonneuse » reste collé si on
+            // quitte le combat en la tenant (mort, fin de run…).
+            .add_systems(OnExit(AppState::EnRun), reset_chainsaw)
+            .add_systems(OnExit(AppState::Terrasse), reset_chainsaw);
     }
+}
+
+fn reset_chainsaw(mut chainsaw: ResMut<ChainsawActive>) {
+    chainsaw.0 = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +410,9 @@ fn strike_system(
         if weapon.profile != Profile::Strike {
             continue;
         }
+        if slot_blocked_by_chainsaw(&loadout, &buttons, slot) {
+            continue;
+        }
         if !slot_pressed(&buttons, slot, true) || cds.0[slot] > 0.0 {
             continue;
         }
@@ -274,36 +421,37 @@ fn strike_system(
 
         let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
         let amount = player_damage(weapon.dmg, &speed, &stats, momentum.0, burst);
-        // `range == 0` → AoE centrée sur le joueur (anneau de la Pelle) ;
-        // sinon coup en avant. (Plus aucun knockback, GDD §5.)
-        let center = player_pos + aim.dir * weapon.range;
-        let radius = weapon.radius * stats.aoe_mult;
-
-        for (e, etf, er) in &enemies {
-            if etf.translation.truncate().distance(center) <= radius + er.0 {
-                dmg.write_hit(e, amount);
+        // (Plus aucun knockback, GDD §5.)
+        if weapon.cone > 0.0 {
+            // Cône depuis le joueur : balayage (Faux, Serpe), estoc (Pic de vigne).
+            let reach = weapon.range;
+            let cos_half = (weapon.cone.to_radians() * 0.5).cos();
+            for (e, etf, er) in &enemies {
+                let to = etf.translation.truncate() - player_pos;
+                if to.length() <= reach + er.0 && to.normalize_or_zero().dot(aim.dir) >= cos_half {
+                    dmg.write_hit(e, amount);
+                }
             }
-        }
-
-        // Visuel : anneau qui s'étend (AoE centrée) ou arc devant soi.
-        if weapon.range == 0.0 {
+            spawn_cone_fx(&mut commands, player_pos, aim.dir, reach, weapon.cone, weapon.color);
+        } else {
+            // AoE circulaire : centrée sur le joueur (anneau Pelle, range 0) ou
+            // au point visé (impact de la Pioche, range > 0).
+            let center = player_pos + aim.dir * weapon.range;
+            let radius = weapon.radius * stats.aoe_mult;
+            for (e, etf, er) in &enemies {
+                if etf.translation.truncate().distance(center) <= radius + er.0 {
+                    dmg.write_hit(e, amount);
+                }
+            }
             for i in 0..20 {
                 let dir = Vec2::from_angle(i as f32 / 20.0 * std::f32::consts::TAU);
                 commands.spawn((
                     Sprite::from_color(weapon.color.with_alpha(0.7), Vec2::splat(6.0)),
-                    Transform::from_translation((player_pos + dir * 12.0).extend(9.0)),
-                    Velocity(dir * radius * 6.0),
+                    Transform::from_translation((center + dir * 8.0).extend(9.0)),
+                    Velocity(dir * radius * 5.0),
                     Lifetime::secs(0.16),
                 ));
             }
-        } else {
-            let angle = aim.dir.y.atan2(aim.dir.x);
-            commands.spawn((
-                Sprite::from_color(weapon.color.with_alpha(0.5), Vec2::new(radius * 1.6, 10.0)),
-                Transform::from_translation(center.extend(9.0))
-                    .with_rotation(Quat::from_rotation_z(angle + std::f32::consts::FRAC_PI_2)),
-                Lifetime::secs(0.12),
-            ));
         }
     }
 }
@@ -333,6 +481,9 @@ fn rake_system(
     for slot in 0..2 {
         let Some(kind) = loadout.0[slot] else { continue };
         if kind != WeaponKind::Rateau {
+            continue;
+        }
+        if slot_blocked_by_chainsaw(&loadout, &buttons, slot) {
             continue;
         }
         let weapon = def(kind);
@@ -400,6 +551,9 @@ fn pesticide_system(
     for slot in 0..2 {
         let Some(kind) = loadout.0[slot] else { continue };
         if kind != WeaponKind::Pesticide {
+            continue;
+        }
+        if slot_blocked_by_chainsaw(&loadout, &buttons, slot) {
             continue;
         }
         let weapon = def(kind);
@@ -487,6 +641,9 @@ fn karcher_system(
         if kind != WeaponKind::Karcher {
             continue;
         }
+        if slot_blocked_by_chainsaw(&loadout, &buttons, slot) {
+            continue;
+        }
         let weapon = def(kind);
         if !slot_pressed(&buttons, slot, false) || cds.0[slot] > 0.0 {
             continue;
@@ -519,6 +676,148 @@ fn karcher_system(
                 Velocity(dir * rng.random_range(500.0..650.0)),
                 Lifetime::secs(weapon.range / 580.0),
             ));
+        }
+    }
+}
+
+/// Tronçonneuse : Maintien → ligne soutenue devant soi (dégâts en ticks).
+/// Tant qu'elle tourne : ralentit le joueur (`ChainsawActive`, lu par `movement`)
+/// et bloque l'autre slot (`slot_blocked_by_chainsaw`). GDD §5.
+fn chainsaw_system(
+    buttons: Res<ButtonInput<MouseButton>>,
+    loadout: Res<Loadout>,
+    mut cds: ResMut<WeaponCds>,
+    speed: Res<SpeedInfo>,
+    stats: Res<PlayerStats>,
+    augments: Res<Augments>,
+    aim: Res<Aim>,
+    mut commands: Commands,
+    mut dmg: MessageWriter<DamageMsg>,
+    mut chainsaw: ResMut<ChainsawActive>,
+    player: Query<(&Transform, &Dash, &Momentum), With<Player>>,
+    enemies: Query<(Entity, &Transform, &Radius), With<Enemy>>,
+) {
+    chainsaw.0 = false;
+    let Ok((player_tf, dash, momentum)) = player.single() else {
+        return;
+    };
+    if !can_attack(dash, &augments) {
+        return;
+    }
+    let player_pos = player_tf.translation.truncate();
+    let mut rng = rand::rng();
+    for slot in 0..2 {
+        let Some(kind) = loadout.0[slot] else { continue };
+        if kind != WeaponKind::Tronconneuse {
+            continue;
+        }
+        let weapon = def(kind);
+        if !slot_pressed(&buttons, slot, false) {
+            continue;
+        }
+        // Elle tourne : ralentit le joueur, même quand le tick est en cooldown.
+        chainsaw.0 = true;
+        if cds.0[slot] > 0.0 {
+            continue;
+        }
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
+
+        let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
+        let tick_dmg = player_damage(weapon.dmg, &speed, &stats, momentum.0, burst) * weapon.cd;
+        for (e, etf, er) in &enemies {
+            let to = etf.translation.truncate() - player_pos;
+            let along = to.dot(aim.dir);
+            if along < 0.0 || along > weapon.range {
+                continue;
+            }
+            let perp = (to - aim.dir * along).length();
+            if perp <= weapon.radius + er.0 {
+                dmg.write_hit(e, tick_dmg);
+            }
+        }
+        // Étincelles le long de la lame.
+        for _ in 0..2 {
+            let t = rng.random_range(0.3..1.0);
+            let jitter = Vec2::new(rng.random_range(-6.0..6.0), rng.random_range(-6.0..6.0));
+            commands.spawn((
+                Sprite::from_color(weapon.color.with_alpha(0.85), Vec2::splat(5.0)),
+                Transform::from_translation(
+                    (player_pos + aim.dir * weapon.range * t + jitter).extend(9.0),
+                ),
+                Lifetime::secs(0.1),
+            ));
+        }
+    }
+}
+
+/// Hache : Frappe → lance un projectile qui file jusqu'au mur (GDD §5).
+fn axe_system(
+    buttons: Res<ButtonInput<MouseButton>>,
+    loadout: Res<Loadout>,
+    mut cds: ResMut<WeaponCds>,
+    speed: Res<SpeedInfo>,
+    stats: Res<PlayerStats>,
+    augments: Res<Augments>,
+    aim: Res<Aim>,
+    mut commands: Commands,
+    player: Query<(&Transform, &Dash, &Momentum), With<Player>>,
+) {
+    let Ok((player_tf, dash, momentum)) = player.single() else {
+        return;
+    };
+    if !can_attack(dash, &augments) {
+        return;
+    }
+    let player_pos = player_tf.translation.truncate();
+    for slot in 0..2 {
+        let Some(kind) = loadout.0[slot] else { continue };
+        if kind != WeaponKind::Hache {
+            continue;
+        }
+        if slot_blocked_by_chainsaw(&loadout, &buttons, slot) {
+            continue;
+        }
+        let weapon = def(kind);
+        if !slot_pressed(&buttons, slot, true) || cds.0[slot] > 0.0 {
+            continue;
+        }
+        cds.0[slot] = weapon.cd * stats.attack_cd_mult;
+
+        let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
+        let amount = player_damage(weapon.dmg, &speed, &stats, momentum.0, burst);
+        commands.spawn((
+            ThrownAxe { dmg: amount, radius: weapon.radius, hit: Vec::new() },
+            Sprite::from_color(weapon.color, weapon.size),
+            Transform::from_translation((player_pos + aim.dir * 18.0).extend(9.0))
+                .with_rotation(Quat::from_rotation_z(aim.dir.to_angle())),
+            Velocity(aim.dir * weapon.range), // `range` = vitesse du projectile
+            Lifetime::secs(2.5),
+        ));
+    }
+}
+
+/// Déplace les haches lancées (via `Velocity`), inflige les dégâts (un hit par
+/// ennemi) et les despawn au mur.
+fn thrown_axe_system(
+    mut commands: Commands,
+    arena: Res<Arena>,
+    mut dmg: MessageWriter<DamageMsg>,
+    mut axes: Query<(Entity, &Transform, &mut ThrownAxe)>,
+    enemies: Query<(Entity, &Transform, &Radius), With<Enemy>>,
+) {
+    for (ae, atf, mut axe) in &mut axes {
+        let pos = atf.translation.truncate();
+        if pos.x.abs() > arena.half.x || pos.y.abs() > arena.half.y {
+            commands.entity(ae).despawn();
+            continue;
+        }
+        for (e, etf, er) in &enemies {
+            if !axe.hit.contains(&e)
+                && etf.translation.truncate().distance(pos) <= er.0 + axe.radius
+            {
+                dmg.write_hit(e, axe.dmg);
+                axe.hit.push(e);
+            }
         }
     }
 }

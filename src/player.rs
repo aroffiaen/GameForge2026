@@ -342,6 +342,7 @@ fn movement(
     keys: Res<ButtonInput<KeyCode>>,
     stats: Res<PlayerStats>,
     augments: Res<Augments>,
+    chainsaw: Res<crate::weapons::ChainsawActive>,
     mut player: Query<(&mut Velocity, &Health, &Dash), With<Player>>,
 ) {
     let Ok((mut vel, health, dash)) = player.single_mut() else {
@@ -368,6 +369,10 @@ fn movement(
     // Adrénaline : à PV bas, on court (donc on frappe) plus fort.
     if augments.has(Augment::Adrenaline) && health.ratio() < 0.3 {
         max *= 1.25;
+    }
+    // Tronçonneuse en main qui tourne : on est ralenti (GDD §5).
+    if chainsaw.0 {
+        max *= 0.5;
     }
     let dt = time.delta_secs();
     let dir = dir.normalize_or_zero();
