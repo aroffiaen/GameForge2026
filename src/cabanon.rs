@@ -481,7 +481,7 @@ fn build_shop_ui(commands: &mut Commands, meta: &MetaSave) {
                 parent.spawn((
                     Text::new(format!(
                         "[{}]  {} — {} pattes{}",
-                        i + 1,
+                        key_label(i),
                         item.label,
                         item.price,
                         note
@@ -562,20 +562,20 @@ fn build_loadout_ui(commands: &mut Commands, meta: &MetaSave, loadout: &Loadout)
                     Color::srgb(0.8, 0.8, 0.8)
                 };
                 parent.spawn((
-                    Text::new(format!("[{}] {} {} — {}", i + 1, marker, d.name, d.desc)),
+                    Text::new(format!("[{}] {} {} — {}", key_label(i), marker, d.name, d.desc)),
                     TextFont { font_size: 16.0, ..default() },
                     TextColor(color),
                 ));
             }
             parent.spawn((
-                Text::new("1-9 équiper/retirer · Échap fermer"),
+                Text::new("1-9 puis 0 : équiper/retirer · Échap fermer"),
                 TextFont { font_size: 13.0, ..default() },
                 TextColor(Color::srgb(0.5, 0.5, 0.5)),
             ));
         });
 }
 
-const DIGITS: [KeyCode; 9] = [
+const DIGITS: [KeyCode; 10] = [
     KeyCode::Digit1,
     KeyCode::Digit2,
     KeyCode::Digit3,
@@ -585,7 +585,17 @@ const DIGITS: [KeyCode; 9] = [
     KeyCode::Digit7,
     KeyCode::Digit8,
     KeyCode::Digit9,
+    KeyCode::Digit0, // 10e item (convention 1-9 puis 0)
 ];
+
+/// Libellé de la touche de sélection de l'item n°`i` (0-based) : 1..9 puis « 0 ».
+fn key_label(i: usize) -> char {
+    if i < 9 {
+        (b'1' + i as u8) as char
+    } else {
+        '0'
+    }
+}
 
 fn overlay_input(
     keys: Res<ButtonInput<KeyCode>>,

@@ -283,6 +283,14 @@ pub struct PlayerDied;
 #[derive(Message)]
 pub struct ToastMsg(pub String);
 
+/// Résultat d'une salle chronométrée, affiché en GROS au centre de l'écran
+/// (vert = avance gagnée, rouge = retard subi). GDD §3.2.
+#[derive(Message)]
+pub struct RoomResultMsg {
+    pub text: String,
+    pub good: bool,
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -303,6 +311,7 @@ impl Plugin for CorePlugin {
             .add_message::<EnemyDied>()
             .add_message::<PlayerDied>()
             .add_message::<ToastMsg>()
+            .add_message::<RoomResultMsg>()
             .configure_sets(
                 Update,
                 (

@@ -1,5 +1,5 @@
 //! Les boss : prédateurs du jardin, un par biome, avec patterns propres
-//! (GDD §7-8). Chacun arrive après un gauntlet de 3 vagues (GDD §6.3).
+//! (GDD §7-8). La salle de boss ne contient que le boss (plus de vagues, §6).
 //!
 //! - Jardin     : Mémé Mygale (araignée) — bonds, jet de toile, araignéeaux.
 //! - Gravier    : Mille-Pattes — ruée en ligne (corps dangereux), salve en

@@ -78,7 +78,7 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Pesticide",
             desc: "Maintien : pose une traînée de poison au sol (DoT).",
             profile: Profile::Hold,
-            dmg: 15.0, // DPS du poison (cible ~15)
+            dmg: 10.0, // DPS du poison (nerf : était 15)
             cd: 0.09,  // intervalle de dépôt
             range: 0.0,
             radius: 26.0,
@@ -130,9 +130,9 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             name: "Tronçonneuse",
             desc: "Maintien : ligne soutenue. Te ralentit et bloque l'arme 2.",
             profile: Profile::Hold,
-            dmg: 16.0, // DPS de la lame (~15, léger bonus pour la contrainte)
-            cd: 0.06,  // intervalle de tick
-            range: 130.0, // longueur de la ligne
+            dmg: 22.0, // DPS de la lame (relevé : la contrainte mérite un vrai punch)
+            cd: 0.10,  // intervalle de tick (moins de ticks/s, mais plus gros chacun)
+            range: 185.0, // longueur de la ligne (allongée)
             radius: 22.0, // demi-largeur
             inner: 0.0,
             cone: 0.0,

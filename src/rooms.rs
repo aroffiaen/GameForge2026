@@ -360,7 +360,8 @@ fn setup_room_chrono(run: &mut RunState, enemy_count: u32, is_elite: bool) {
     match run.pending_bet.take() {
         Some(stat) => {
             // Seuil ∝ densité de la salle ; plus permissif en élite (GDD §3.2).
-            let base = 4.0 + 1.1 * enemy_count as f32 + 0.5 * run.biome_index as f32;
+            // (Resserré : une salle traînée bascule plus vite en « raté ».)
+            let base = 3.0 + 0.85 * enemy_count as f32 + 0.4 * run.biome_index as f32;
             run.chrono_target = if is_elite { base * 1.6 } else { base };
             run.chrono_elapsed = 0.0;
             run.chrono_active = true;
@@ -376,7 +377,11 @@ fn setup_room_chrono(run: &mut RunState, enemy_count: u32, is_elite: bool) {
 /// Résout la mise de la salle chronométrée qu'on vient de nettoyer :
 /// réussite (sous le temps) → +2 pts/s d'avance ; échec → −1 pt/s de retard,
 /// plafonné à −15 (GDD §3.2).
-fn resolve_chrono(run: &mut RunState, statup: &mut Stats, toasts: &mut MessageWriter<ToastMsg>) {
+fn resolve_chrono(
+    run: &mut RunState,
+    statup: &mut Stats,
+    result: &mut MessageWriter<RoomResultMsg>,
+) {
     if !run.chrono_active {
         return;
     }
@@ -388,19 +393,25 @@ fn resolve_chrono(run: &mut RunState, statup: &mut Stats, toasts: &mut MessageWr
         statup.add(bet, gain);
         // Réussite : la prochaine salle monte un peu (cap +3).
         run.momentum = (run.momentum + 1).min(3);
-        toasts.write(ToastMsg(format!(
-            "⏱ {elapsed:.1}s ≤ {target:.1}s — {} +{gain:.0}%",
-            bet.label()
-        )));
+        result.write(RoomResultMsg {
+            text: format!(
+                "RÉUSSI — {} +{gain:.0}%   (⏱ {elapsed:.1}s ≤ {target:.1}s)",
+                bet.label()
+            ),
+            good: true,
+        });
     } else {
         let loss = (elapsed - target).min(15.0);
         statup.add(bet, -loss);
         // Échec : on relâche un peu la pression (cap −2).
         run.momentum = (run.momentum - 1).max(-2);
-        toasts.write(ToastMsg(format!(
-            "⏱ {elapsed:.1}s > {target:.1}s — {} −{loss:.0}%",
-            bet.label()
-        )));
+        result.write(RoomResultMsg {
+            text: format!(
+                "RATÉ — {} −{loss:.0}%   (⏱ {elapsed:.1}s > {target:.1}s)",
+                bet.label()
+            ),
+            good: false,
+        });
     }
 }
 
@@ -412,7 +423,7 @@ fn tick_chrono(time: Res<Time>, phase: Res<State<RunPhase>>, mut run: ResMut<Run
 }
 
 // ---------------------------------------------------------------------------
-// Détection de fin de salle & gauntlet de boss (GDD §6.3)
+// Détection de fin de salle (combat / élite / boss) — GDD §6
 // ---------------------------------------------------------------------------
 
 fn check_room_clear(
@@ -423,6 +434,7 @@ fn check_room_clear(
     mut statup: ResMut<Stats>,
     augments: Res<Augments>,
     mut toasts: MessageWriter<ToastMsg>,
+    mut result: MessageWriter<RoomResultMsg>,
     mut after: ResMut<AfterAugment>,
     mut next_phase: ResMut<NextState<RunPhase>>,
     enemies: Query<Entity, With<Enemy>>,
@@ -450,7 +462,7 @@ fn check_room_clear(
         }
         RoomKind::Elite => {
             // La salle d'élite était chronométrée (permissive) : on résout la mise.
-            resolve_chrono(&mut run, &mut statup, &mut toasts);
+            resolve_chrono(&mut run, &mut statup, &mut result);
             // Grosse récompense : un augment (GDD §6.4).
             *after = AfterAugment::Door;
             next_phase.set(RunPhase::Augment);
@@ -458,7 +470,7 @@ fn check_room_clear(
         _ => {
             // Fin d'une salle (éventuellement chronométrée) : on résout la mise,
             // puis on ouvre les portes-stat suivantes.
-            resolve_chrono(&mut run, &mut statup, &mut toasts);
+            resolve_chrono(&mut run, &mut statup, &mut result);
             next_phase.set(RunPhase::DoorOpen);
         }
     }

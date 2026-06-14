@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use crate::augments::{Augment, Augments};
 use crate::common::*;
 use crate::meta::MetaSave;
-use crate::player::{Dash, SpeedInfo};
+use crate::player::{Dash, PlayerStats, SpeedInfo};
 use crate::rooms::{RoomKind, RunState};
 use crate::stats::{Stat, Stats};
 use crate::terrasse::TerrasseState;
@@ -44,6 +44,12 @@ struct Toast {
     timer: Timer,
 }
 
+/// Verdict de salle chronométrée affiché en gros au centre (vert/rouge).
+#[derive(Component)]
+struct RoomResult {
+    timer: Timer,
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -73,7 +79,10 @@ impl Plugin for UiPlugin {
                 Update,
                 pause_system.run_if(in_state(AppState::EnRun).or(in_state(AppState::Terrasse))),
             )
-            .add_systems(Update, (spawn_toasts, update_toasts))
+            .add_systems(
+                Update,
+                (spawn_toasts, update_toasts, spawn_room_result, update_room_result),
+            )
             .add_systems(
                 Update,
                 game_over_input.run_if(in_state(AppState::GameOver)),
@@ -457,18 +466,82 @@ fn update_toasts(
     }
 }
 
+/// Affiche le verdict de salle chronométrée en gros, au centre (remplace le
+/// précédent s'il y en a un).
+fn spawn_room_result(
+    mut msgs: MessageReader<RoomResultMsg>,
+    mut commands: Commands,
+    existing: Query<Entity, With<RoomResult>>,
+) {
+    for msg in msgs.read() {
+        for e in &existing {
+            commands.entity(e).despawn();
+        }
+        let color = if msg.good {
+            Color::srgb(0.45, 1.0, 0.5)
+        } else {
+            Color::srgb(1.0, 0.4, 0.4)
+        };
+        commands.spawn((
+            RoomResult {
+                timer: Timer::from_seconds(2.2, TimerMode::Once),
+            },
+            Text::new(msg.text.clone()),
+            TextFont { font_size: 30.0, ..default() },
+            TextColor(color),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(40.0),
+                justify_self: JustifySelf::Center,
+                ..default()
+            },
+            GlobalZIndex(31),
+        ));
+    }
+}
+
+fn update_room_result(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut q: Query<(Entity, &mut RoomResult, &mut TextColor)>,
+) {
+    for (e, mut result, mut color) in &mut q {
+        result.timer.tick(time.delta());
+        let left = 1.0 - result.timer.fraction();
+        color.0 = color.0.with_alpha((left * 4.0).min(1.0));
+        if result.timer.is_finished() {
+            commands.entity(e).despawn();
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pause
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 fn pause_system(
     keys: Res<ButtonInput<KeyCode>>,
     state: Res<State<AppState>>,
     phase: Res<State<RunPhase>>,
     mut paused: ResMut<Paused>,
+    mut next_state: ResMut<NextState<AppState>>,
     mut commands: Commands,
     pause_ui: Query<Entity, With<PauseUi>>,
+    stats: Res<Stats>,
+    meta: Res<MetaSave>,
+    augments: Res<Augments>,
 ) {
+    // En pause : Q abandonne la run et ramène au menu principal (cabanon).
+    if paused.0 && keys.just_pressed(KeyCode::KeyQ) {
+        paused.0 = false;
+        for e in &pause_ui {
+            commands.entity(e).despawn();
+        }
+        next_state.set(AppState::Cabanon);
+        return;
+    }
+
     // Esc ne met en pause que pendant le combat, pas dans les menus.
     let pausable = match state.get() {
         AppState::Terrasse => true,
@@ -479,40 +552,137 @@ fn pause_system(
         return;
     }
     paused.0 = !paused.0;
-    if paused.0 {
-        commands
-            .spawn((
-                PauseUi,
-                Node {
-                    position_type: PositionType::Absolute,
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    align_items: AlignItems::Center,
-                    justify_content: JustifyContent::Center,
-                    row_gap: Val::Px(8.0),
-                    ..default()
-                },
-                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.6)),
-                GlobalZIndex(40),
-            ))
-            .with_children(|p| {
-                p.spawn((
-                    Text::new("PAUSE"),
-                    TextFont { font_size: 40.0, ..default() },
-                    TextColor(Color::WHITE),
-                ));
-                p.spawn((
-                    Text::new("Le jardin t'attend. (Échap pour reprendre)"),
-                    TextFont { font_size: 16.0, ..default() },
-                    TextColor(Color::srgb(0.8, 0.8, 0.8)),
-                ));
-            });
-    } else {
+    if !paused.0 {
         for e in &pause_ui {
             commands.entity(e).despawn();
         }
+        return;
     }
+
+    // --- Construction du menu de pause ---
+    // Valeurs effectives (stats-up comprises) recalculées à l'ouverture.
+    let ps = PlayerStats::compute(&meta, &augments, &stats);
+    let reduction = (1.0 - ps.incoming_mult) * 100.0;
+    let rows: [(&str, String); 7] = [
+        ("PV max", format!("{:.0}   ({:.0}%)", ps.max_hp, stats.get(Stat::Pv))),
+        ("Régén / s", format!("{:.2}   ({:.0}%)", ps.regen_hps, stats.get(Stat::Regen))),
+        (
+            "Réduction dégâts",
+            format!("{:+.0}%   ({:.0}% Résist.)", reduction, stats.get(Stat::Resistance)),
+        ),
+        ("Dégâts", format!("{:.0}%", ps.dmg_mult * 100.0)),
+        (
+            "Vitesse",
+            format!("{:.0} px/s   ({:.0}%)", ps.max_speed, stats.get(Stat::MoveSpeed)),
+        ),
+        ("Cadence d'attaque", format!("{:.0}%", stats.get(Stat::AttackSpeed))),
+        ("Cooldown dash", format!("{:.2}s   ({:.0}%)", ps.dash_cd, stats.get(Stat::DashCd))),
+    ];
+    let aug_names: Vec<&str> = augments.0.iter().map(|a| a.name()).collect();
+
+    let panel_bg = Color::srgba(0.10, 0.13, 0.18, 0.95);
+    commands
+        .spawn((
+            PauseUi,
+            Node {
+                position_type: PositionType::Absolute,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                row_gap: Val::Px(14.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.8)),
+            GlobalZIndex(40),
+        ))
+        .with_children(|p| {
+            p.spawn((
+                Text::new("PAUSE"),
+                TextFont { font_size: 40.0, ..default() },
+                TextColor(Color::WHITE),
+            ));
+
+            // Panneau STATS (valeurs effectives, stats-up comprises).
+            p.spawn((
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    width: Val::Px(420.0),
+                    row_gap: Val::Px(5.0),
+                    ..default()
+                },
+                BackgroundColor(panel_bg),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("— STATS —"),
+                    TextFont { font_size: 17.0, ..default() },
+                    TextColor(Color::srgb(0.95, 0.9, 0.5)),
+                ));
+                for (label, value) in &rows {
+                    panel
+                        .spawn(Node {
+                            width: Val::Percent(100.0),
+                            justify_content: JustifyContent::SpaceBetween,
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            row.spawn((
+                                Text::new(*label),
+                                TextFont { font_size: 16.0, ..default() },
+                                TextColor(Color::srgb(0.72, 0.78, 0.85)),
+                            ));
+                            row.spawn((
+                                Text::new(value.clone()),
+                                TextFont { font_size: 16.0, ..default() },
+                                TextColor(Color::srgb(1.0, 0.95, 0.78)),
+                            ));
+                        });
+                }
+            });
+
+            // Panneau AUGMENTS récupérés.
+            p.spawn((
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    width: Val::Px(420.0),
+                    row_gap: Val::Px(4.0),
+                    ..default()
+                },
+                BackgroundColor(panel_bg),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new(format!("— AUGMENTS ({}) —", aug_names.len())),
+                    TextFont { font_size: 17.0, ..default() },
+                    TextColor(Color::srgb(0.6, 0.9, 1.0)),
+                ));
+                if aug_names.is_empty() {
+                    panel.spawn((
+                        Text::new("Aucun pour l'instant."),
+                        TextFont { font_size: 15.0, ..default() },
+                        TextColor(Color::srgb(0.6, 0.6, 0.6)),
+                    ));
+                } else {
+                    for name in &aug_names {
+                        panel.spawn((
+                            Text::new(format!("• {name}")),
+                            TextFont { font_size: 15.0, ..default() },
+                            TextColor(Color::srgb(0.85, 0.9, 0.85)),
+                        ));
+                    }
+                }
+            });
+
+            p.spawn((
+                Text::new("Échap : reprendre        Q : quitter au cabanon"),
+                TextFont { font_size: 15.0, ..default() },
+                TextColor(Color::srgb(0.7, 0.7, 0.7)),
+            ));
+        });
 }
 
 fn reset_pause(mut paused: ResMut<Paused>, mut commands: Commands, q: Query<Entity, With<PauseUi>>) {
