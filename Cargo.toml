@@ -10,7 +10,9 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = "0.18.1"
+# `wav` ajouté aux features par défaut : les SFX du jeu sont des .wav, et seul
+# le décodeur Vorbis (ogg) est activé par défaut dans Bevy.
+bevy = { version = "0.18.1", features = ["wav"] }
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 ron = "0.10"

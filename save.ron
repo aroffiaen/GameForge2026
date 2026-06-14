@@ -38,7 +38,15 @@
     up_pattes: 2,
     terrasse_unlocked: true,
     best_terrasse: 92.41865,
-    runs: 62,
+    runs: 63,
     deaths: 43,
     tools_bought_this_cycle: 0,
+    keybinds: (
+        up: "Z",
+        down: "S",
+        left: "Q",
+        right: "D",
+        dash: "Espace",
+        interact: "E",
+    ),
 )

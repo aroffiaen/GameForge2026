@@ -186,6 +186,7 @@ fn build_room(
     arena: Res<Arena>,
     mut clear_color: ResMut<ClearColor>,
     mut toasts: MessageWriter<ToastMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     mut next_phase: ResMut<NextState<RunPhase>>,
     sprites: Res<GameSprites>,
     mut player: Query<(&mut Transform, &mut Velocity), With<Player>>,
@@ -343,6 +344,7 @@ fn build_room(
                 Vec2::new(0.0, arena.half.y * 0.5),
                 hp_scale,
             );
+            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::boss(boss)));
             toasts.write(ToastMsg(format!(
                 "ANTRE DU BOSS — {} ({})",
                 boss.name(),

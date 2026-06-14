@@ -3,6 +3,7 @@
 //!
 //! Voir le README et docs/GDD.md pour la conception complète.
 
+mod audio;
 mod augments;
 mod biomes;
 mod boss;
@@ -91,7 +92,7 @@ fn main() {
 
     app.insert_resource(ClearColor(Color::srgb(0.10, 0.08, 0.06)))
         .add_plugins((
-            common::CorePlugin,
+            (common::CorePlugin, audio::AudioPlugin),
             meta::MetaPlugin,
             menu::MenuPlugin,
             stats::StatsPlugin,

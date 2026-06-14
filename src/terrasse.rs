@@ -124,6 +124,7 @@ fn terrasse_spawner(
     mut terrasse: ResMut<TerrasseState>,
     arena: Res<Arena>,
     mut toasts: MessageWriter<ToastMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
 ) {
     // Le rythme s'accélère avec le temps (GDD : « de plus en plus forts »).
     let interval = (1.6 - terrasse.time * 0.015).max(0.45);
@@ -163,6 +164,7 @@ fn terrasse_spawner(
             Vec2::new(0.0, arena.half.y - 60.0),
             1.0 + terrasse.time / 90.0,
         );
+        sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::boss(boss)));
         toasts.write(ToastMsg(format!("{} s'invite sur la terrasse !", boss.name())));
     }
 }
