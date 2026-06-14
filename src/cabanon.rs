@@ -166,7 +166,7 @@ fn enter_cabanon(
         }
     }
     if loadout.0[0].is_none() && loadout.0[1].is_none() {
-        loadout.0[0] = Some(WeaponKind::Poings);
+        loadout.0[0] = Some(WeaponKind::Pelle);
     }
 
     let stats = PlayerStats::compute(&meta, &crate::augments::Augments::default(), &statup);
@@ -598,9 +598,9 @@ fn overlay_input(
         return;
     }
     if keys.just_pressed(KeyCode::Escape) {
-        // On ne sort jamais sans rien : les poings reviennent d'office.
+        // On ne sort jamais sans rien : la Pelle (outil de départ) revient d'office.
         if loadout.0[0].is_none() && loadout.0[1].is_none() {
-            loadout.0[0] = Some(WeaponKind::Poings);
+            loadout.0[0] = Some(WeaponKind::Pelle);
         }
         *overlay = HubOverlay::None;
         return;

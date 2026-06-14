@@ -44,7 +44,7 @@ impl Default for MetaSave {
         Self {
             pattes: 0,
             total_kills: 0,
-            unlocked: vec![WeaponKind::Poings],
+            unlocked: vec![WeaponKind::Pelle],
             claimable: Vec::new(),
             achievements: Vec::new(),
             bosses_beaten: Vec::new(),
@@ -109,11 +109,9 @@ pub fn save_meta(meta: &MetaSave) {
 /// Prix de rachat des outils chez le bousier (GDD §11.3).
 pub fn tool_price(w: WeaponKind) -> u64 {
     match w {
-        WeaponKind::Poings => 0,
-        WeaponKind::PetitePelle => 60,
-        WeaponKind::Arrosoir => 100,
+        WeaponKind::Pelle => 0, // outil de départ
+        WeaponKind::Pesticide => 100,
         WeaponKind::Rateau => 140,
-        WeaponKind::Pelle => 180,
         WeaponKind::Karcher => 220,
     }
 }
@@ -121,11 +119,9 @@ pub fn tool_price(w: WeaponKind) -> u64 {
 /// Condition d'accomplissement qui rend l'outil récupérable.
 pub fn tool_condition(w: WeaponKind) -> &'static str {
     match w {
-        WeaponKind::Poings => "Tes poings. Toujours là pour toi.",
-        WeaponKind::PetitePelle => "Bats ton premier boss.",
-        WeaponKind::Arrosoir => "Dézingue 100 insectes (en cumulé).",
-        WeaponKind::Rateau => "Bats 2 boss dans la même run.",
-        WeaponKind::Pelle => "Bats le boss des 3 biomes (au moins une fois chacun).",
+        WeaponKind::Pelle => "Ton outil de départ.",
+        WeaponKind::Pesticide => "Dézingue 100 insectes (en cumulé).",
+        WeaponKind::Rateau => "Bats ton premier boss.",
         WeaponKind::Karcher => "Atteins la Terrasse.",
     }
 }
@@ -149,7 +145,6 @@ impl Plugin for MetaPlugin {
 fn achievements_engine(
     mut died: MessageReader<EnemyDied>,
     mut meta: ResMut<MetaSave>,
-    stats: Res<RunStats>,
     run: Res<crate::rooms::RunState>,
     mut toasts: MessageWriter<ToastMsg>,
 ) {
@@ -157,49 +152,31 @@ fn achievements_engine(
     for msg in died.read() {
         meta.total_kills += 1;
 
-        // Arrosoir : 100 insectes au compteur.
+        // Pesticide : 100 insectes au compteur.
         if meta.total_kills >= 100 && !meta.has_ach("kills_100") {
             meta.add_ach("kills_100");
-            if meta.make_claimable(WeaponKind::Arrosoir) {
+            if meta.make_claimable(WeaponKind::Pesticide) {
                 toasts.write(ToastMsg(
-                    "100 insectes ! Le bousier veut bien te revendre l'ARROSOIR.".into(),
+                    "100 insectes ! Le bousier veut bien te revendre le PESTICIDE.".into(),
                 ));
             }
             changed = true;
         }
 
         if msg.was_boss {
-            // Petite pelle : premier boss.
+            // Râteau : premier boss.
             if !meta.has_ach("first_boss") {
                 meta.add_ach("first_boss");
-                if meta.make_claimable(WeaponKind::PetitePelle) {
-                    toasts.write(ToastMsg(
-                        "Premier boss ! La PETITE PELLE est récupérable au cabanon.".into(),
-                    ));
-                }
-            }
-            // Râteau : 2 boss dans la même run (stats.bosses est incrémenté
-            // par la salle de boss juste après ce message ; on compte donc +1).
-            if stats.bosses + 1 >= 2 && !meta.has_ach("two_boss_run") {
-                meta.add_ach("two_boss_run");
                 if meta.make_claimable(WeaponKind::Rateau) {
                     toasts.write(ToastMsg(
-                        "2 boss dans la même run ! Le RÂTEAU est récupérable.".into(),
+                        "Premier boss ! Le RÂTEAU est récupérable au cabanon.".into(),
                     ));
                 }
             }
-            // Pelle : les 3 boss des 3 biomes, en cumulé.
+            // Cumul des boss battus par biome (réservé aux déblocages du Lot 2).
             let biome_id = run.biome.id().to_string();
             if !meta.bosses_beaten.contains(&biome_id) {
                 meta.bosses_beaten.push(biome_id);
-            }
-            if meta.bosses_beaten.len() >= 3 && !meta.has_ach("all_bosses") {
-                meta.add_ach("all_bosses");
-                if meta.make_claimable(WeaponKind::Pelle) {
-                    toasts.write(ToastMsg(
-                        "Les 3 boss du jardin matés ! La PELLE est récupérable.".into(),
-                    ));
-                }
             }
             changed = true;
         }

@@ -13,32 +13,32 @@ use crate::player::{Aim, Dash, Momentum, PlayerStats, SpeedInfo};
 // Définition des armes
 // ---------------------------------------------------------------------------
 
+// Refonte v0.3 §18.F — Lot 1 : roster strict (Poings/Petite pelle retirés,
+// Arrosoir → Pesticide), **plus aucun knockback** (retrait global, GDD §5).
+// Les 6 armes restantes (Tronçonneuse, Pioche, Faux, Hache, Serpe, Pic de vigne)
+// arrivent en Lot 2.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
 pub enum WeaponKind {
-    Poings,
-    PetitePelle,
+    Pesticide,
     Pelle,
     Rateau,
-    Arrosoir,
     Karcher,
 }
 
 pub const ALL_WEAPONS: &[WeaponKind] = &[
-    WeaponKind::Poings,
-    WeaponKind::PetitePelle,
+    WeaponKind::Pesticide,
     WeaponKind::Pelle,
     WeaponKind::Rateau,
-    WeaponKind::Arrosoir,
     WeaponKind::Karcher,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
-    /// Un clic = un coup visé.
+    /// Frappe : un clic = un coup.
     Strike,
-    /// Gâchette tenue = effet continu.
+    /// Maintien : gâchette tenue = effet continu (hold-to-shoot, sans coût).
     Hold,
-    /// Effet de contrôle sur cooldown.
+    /// Frappe à effet de contrôle sur cooldown (le râteau aspire).
     Utility,
 }
 
@@ -48,84 +48,63 @@ pub struct WeaponDef {
     pub profile: Profile,
     pub dmg: f32,
     pub cd: f32,
+    /// Portée (px). 0 = AoE centrée sur le joueur (anneau).
     pub range: f32,
+    /// Rayon d'effet (px) pour les AoE centrées / la traînée.
     pub radius: f32,
-    pub kb: f32,
+    /// Angle total du cône (degrés) pour les armes coniques. 0 = sans objet.
+    pub cone: f32,
     pub color: Color,
     pub size: Vec2,
 }
 
 pub fn def(kind: WeaponKind) -> WeaponDef {
     match kind {
-        WeaponKind::Poings => WeaponDef {
-            name: "Poings",
-            desc: "L'arme de base. Rapide, courte portée.",
-            profile: Profile::Strike,
-            dmg: 6.0,
-            cd: 0.25,
-            range: 28.0,
-            radius: 24.0,
-            kb: 70.0,
-            color: Color::srgb(0.9, 0.75, 0.6),
-            size: Vec2::new(8.0, 8.0),
-        },
-        WeaponKind::PetitePelle => WeaponDef {
-            name: "Petite pelle",
-            desc: "Mêlée rapide, DPS régulier.",
-            profile: Profile::Strike,
-            dmg: 9.0,
-            cd: 0.28,
-            range: 40.0,
-            radius: 28.0,
-            kb: 100.0,
-            color: Color::srgb(0.75, 0.75, 0.8),
-            size: Vec2::new(16.0, 6.0),
-        },
-        WeaponKind::Pelle => WeaponDef {
-            name: "Pelle",
-            desc: "Lourde et lente : gros coup, gros recul.",
-            profile: Profile::Strike,
-            dmg: 24.0,
-            cd: 0.75,
-            range: 48.0,
-            radius: 38.0,
-            kb: 300.0,
-            color: Color::srgb(0.6, 0.6, 0.68),
-            size: Vec2::new(24.0, 8.0),
-        },
-        WeaponKind::Rateau => WeaponDef {
-            name: "Râteau",
-            desc: "Attire les ennemis vers toi. Pilier de synergie.",
-            profile: Profile::Utility,
-            dmg: 4.0,
-            cd: 2.2,
-            range: 0.0,
-            radius: 230.0,
-            kb: 0.0,
-            color: Color::srgb(0.7, 0.5, 0.3),
-            size: Vec2::new(20.0, 6.0),
-        },
-        WeaponKind::Arrosoir => WeaponDef {
-            name: "Arrosoir",
-            desc: "Pose une traînée de pesticide qui empoisonne.",
+        WeaponKind::Pesticide => WeaponDef {
+            name: "Pesticide",
+            desc: "Maintien : pose une traînée de poison au sol (DoT).",
             profile: Profile::Hold,
             dmg: 14.0, // DPS du poison
             cd: 0.09,  // intervalle de dépôt
             range: 0.0,
             radius: 26.0,
-            kb: 0.0,
+            cone: 0.0,
             color: Color::srgb(0.35, 0.65, 0.9),
             size: Vec2::new(14.0, 10.0),
         },
+        WeaponKind::Pelle => WeaponDef {
+            name: "Pelle",
+            desc: "Frappe : coup de zone en anneau autour de toi (Q de Darius).",
+            profile: Profile::Strike,
+            dmg: 26.0,
+            cd: 0.7,
+            range: 0.0,   // centré sur le joueur
+            radius: 78.0, // rayon de l'anneau
+            cone: 0.0,
+            color: Color::srgb(0.6, 0.6, 0.68),
+            size: Vec2::new(24.0, 8.0),
+        },
+        WeaponKind::Rateau => WeaponDef {
+            name: "Râteau",
+            desc: "Frappe : attire les ennemis devant toi (cône). Pilier de synergie.",
+            profile: Profile::Utility,
+            dmg: 5.0,
+            cd: 1.8,
+            range: 230.0, // allonge de l'aspiration
+            radius: 0.0,
+            cone: 110.0, // cône frontal
+            color: Color::srgb(0.7, 0.5, 0.3),
+            size: Vec2::new(20.0, 6.0),
+        },
         WeaponKind::Karcher => WeaponDef {
             name: "Karcher",
-            desc: "Jet haute pression : dégâts soutenus + recul continu.",
+            desc: "Maintien : jet en éventail 60°, dégâts soutenus.",
             profile: Profile::Hold,
-            dmg: 32.0, // DPS du jet
+            dmg: 34.0, // DPS du jet
             cd: 0.07,  // intervalle de tick
             range: 235.0,
-            radius: 16.0, // demi-largeur du jet
-            kb: 60.0,
+            radius: 16.0,
+            cone: 60.0,
             color: Color::srgb(0.95, 0.85, 0.2),
             size: Vec2::new(18.0, 9.0),
         },
@@ -142,7 +121,7 @@ pub struct Loadout(pub [Option<WeaponKind>; 2]);
 
 impl Default for Loadout {
     fn default() -> Self {
-        Self([Some(WeaponKind::Poings), None])
+        Self([Some(WeaponKind::Pelle), None])
     }
 }
 
@@ -226,7 +205,7 @@ impl Plugin for WeaponsPlugin {
                     tick_cooldowns,
                     strike_system,
                     rake_system,
-                    arrosoir_system,
+                    pesticide_system,
                     karcher_system,
                     dash_trail_system,
                 )
@@ -272,7 +251,7 @@ fn strike_system(
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
     player: Query<(&Transform, &Dash, &Momentum), With<Player>>,
-    mut enemies: Query<(Entity, &Transform, &Radius, &mut Knockback), With<Enemy>>,
+    enemies: Query<(Entity, &Transform, &Radius), With<Enemy>>,
 ) {
     let Ok((player_tf, dash, momentum)) = player.single() else {
         return;
@@ -295,26 +274,37 @@ fn strike_system(
 
         let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
         let amount = player_damage(weapon.dmg, &speed, &stats, momentum.0, burst);
+        // `range == 0` → AoE centrée sur le joueur (anneau de la Pelle) ;
+        // sinon coup en avant. (Plus aucun knockback, GDD §5.)
         let center = player_pos + aim.dir * weapon.range;
         let radius = weapon.radius * stats.aoe_mult;
 
-        for (e, etf, er, mut kb) in &mut enemies {
-            let epos = etf.translation.truncate();
-            if epos.distance(center) <= radius + er.0 {
+        for (e, etf, er) in &enemies {
+            if etf.translation.truncate().distance(center) <= radius + er.0 {
                 dmg.write_hit(e, amount);
-                let push = (epos - player_pos).normalize_or(aim.dir);
-                kb.0 += push * weapon.kb * stats.kb_mult;
             }
         }
 
-        // Visuel du coup : un arc qui s'efface aussitôt.
-        let angle = aim.dir.y.atan2(aim.dir.x);
-        commands.spawn((
-            Sprite::from_color(weapon.color.with_alpha(0.5), Vec2::new(radius * 1.6, 10.0)),
-            Transform::from_translation(center.extend(9.0))
-                .with_rotation(Quat::from_rotation_z(angle + std::f32::consts::FRAC_PI_2)),
-            Lifetime::secs(0.12),
-        ));
+        // Visuel : anneau qui s'étend (AoE centrée) ou arc devant soi.
+        if weapon.range == 0.0 {
+            for i in 0..20 {
+                let dir = Vec2::from_angle(i as f32 / 20.0 * std::f32::consts::TAU);
+                commands.spawn((
+                    Sprite::from_color(weapon.color.with_alpha(0.7), Vec2::splat(6.0)),
+                    Transform::from_translation((player_pos + dir * 12.0).extend(9.0)),
+                    Velocity(dir * radius * 6.0),
+                    Lifetime::secs(0.16),
+                ));
+            }
+        } else {
+            let angle = aim.dir.y.atan2(aim.dir.x);
+            commands.spawn((
+                Sprite::from_color(weapon.color.with_alpha(0.5), Vec2::new(radius * 1.6, 10.0)),
+                Transform::from_translation(center.extend(9.0))
+                    .with_rotation(Quat::from_rotation_z(angle + std::f32::consts::FRAC_PI_2)),
+                Lifetime::secs(0.12),
+            ));
+        }
     }
 }
 
@@ -327,6 +317,7 @@ fn rake_system(
     speed: Res<SpeedInfo>,
     stats: Res<PlayerStats>,
     augments: Res<Augments>,
+    aim: Res<Aim>,
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
     player: Query<(&Transform, &Dash, &Momentum), With<Player>>,
@@ -351,16 +342,19 @@ fn rake_system(
         cds.0[slot] = weapon.cd * stats.attack_cd_mult;
         swings.0[slot] = 0.2;
 
-        let radius = weapon.radius * stats.rake_mult;
+        let reach = weapon.range * stats.rake_mult;
+        // Cône frontal : on n'aspire que ce qui est DEVANT (GDD §5).
+        let cos_half = (weapon.cone.to_radians() * 0.5).cos();
         let burst = augments.has(Augment::DashOffensif) && !dash.burst.is_finished();
         let amount = player_damage(weapon.dmg, &speed, &stats, momentum.0, burst);
 
         for (e, etf, mut kb) in &mut enemies {
             let epos = etf.translation.truncate();
-            let dist = epos.distance(player_pos);
-            if dist <= radius {
+            let to_enemy = epos - player_pos;
+            let dist = to_enemy.length();
+            if dist <= reach && to_enemy.normalize_or_zero().dot(aim.dir) >= cos_half {
+                // Aspiration vers le joueur (un PULL, pas un knockback).
                 let pull = (player_pos - epos).normalize_or_zero();
-                // On tire fort, mais pas au-delà du joueur.
                 kb.0 += pull * (260.0 + dist * 1.2);
                 dmg.write_hit(e, amount);
                 if augments.has(Augment::RateauAimante) {
@@ -371,22 +365,24 @@ fn rake_system(
             }
         }
 
-        // Visuel : un anneau de dents de râteau qui converge.
-        for i in 0..18 {
-            let dir = Vec2::from_angle(i as f32 / 18.0 * std::f32::consts::TAU);
+        // Visuel : des dents qui balaient le cône frontal vers le joueur.
+        let base = aim.dir.to_angle();
+        for i in 0..11 {
+            let spread = (i as f32 / 10.0 - 0.5) * weapon.cone.to_radians();
+            let dir = Vec2::from_angle(base + spread);
             commands.spawn((
                 Sprite::from_color(weapon.color.with_alpha(0.8), Vec2::splat(5.0)),
-                Transform::from_translation((player_pos + dir * radius).extend(8.0)),
-                Velocity(-dir * radius * 2.4),
+                Transform::from_translation((player_pos + dir * reach).extend(8.0)),
+                Velocity(-dir * reach * 2.4),
                 Lifetime::secs(0.3),
             ));
         }
     }
 }
 
-/// Arrosoir : gâchette tenue → traînée de pesticide le long du trajet
-/// (le « Q de Singed », GDD §4.2).
-fn arrosoir_system(
+/// Pesticide : Maintien → traînée de poison le long du trajet (« Q de Singed »,
+/// GDD §5). Hold-to-shoot : aucun coût, l'intervalle de dépôt fait office de cd.
+fn pesticide_system(
     buttons: Res<ButtonInput<MouseButton>>,
     loadout: Res<Loadout>,
     mut cds: ResMut<WeaponCds>,
@@ -403,7 +399,7 @@ fn arrosoir_system(
     }
     for slot in 0..2 {
         let Some(kind) = loadout.0[slot] else { continue };
-        if kind != WeaponKind::Arrosoir {
+        if kind != WeaponKind::Pesticide {
             continue;
         }
         let weapon = def(kind);
@@ -463,7 +459,8 @@ fn dash_trail_system(
     }
 }
 
-/// Karcher : jet continu, dégâts en ticks + recul (GDD §4.2).
+/// Karcher : Maintien → jet en éventail 60°, dégâts soutenus (plus de recul,
+/// GDD §5). Hold-to-shoot : l'intervalle de tick fait office de cd.
 fn karcher_system(
     buttons: Res<ButtonInput<MouseButton>>,
     loadout: Res<Loadout>,
@@ -475,7 +472,7 @@ fn karcher_system(
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
     player: Query<(&Transform, &Dash, &Momentum), With<Player>>,
-    mut enemies: Query<(Entity, &Transform, &Radius, &mut Knockback), With<Enemy>>,
+    enemies: Query<(Entity, &Transform, &Radius), With<Enemy>>,
 ) {
     let Ok((player_tf, dash, momentum)) = player.single() else {
         return;
@@ -500,23 +497,21 @@ fn karcher_system(
         let tick_dmg =
             player_damage(weapon.dmg, &speed, &stats, momentum.0, burst) * weapon.cd;
         let extra = if augments.has(Augment::BuseHautePression) { 1.25 } else { 1.0 };
+        let half = weapon.cone.to_radians() * 0.5;
+        let cos_half = half.cos();
 
-        for (e, etf, er, mut kb) in &mut enemies {
+        for (e, etf, er) in &enemies {
             let to_enemy = etf.translation.truncate() - player_pos;
-            let along = to_enemy.dot(aim.dir);
-            if along < 0.0 || along > weapon.range {
-                continue;
-            }
-            let perp = (to_enemy - aim.dir * along).length();
-            if perp <= weapon.radius + er.0 {
+            let dist = to_enemy.length();
+            // Éventail : dans la portée ET dans l'angle du cône.
+            if dist <= weapon.range + er.0 && to_enemy.normalize_or_zero().dot(aim.dir) >= cos_half {
                 dmg.write_hit(e, tick_dmg * extra);
-                kb.0 += aim.dir * weapon.kb * stats.kb_mult;
             }
         }
 
-        // Gouttelettes du jet.
-        for _ in 0..3 {
-            let spread = rng.random_range(-0.12..0.12);
+        // Gouttelettes du jet, réparties sur tout l'éventail.
+        for _ in 0..4 {
+            let spread = rng.random_range(-half..half);
             let dir = Vec2::from_angle(aim.dir.to_angle() + spread);
             commands.spawn((
                 Sprite::from_color(Color::srgb(0.5, 0.8, 1.0).with_alpha(0.8), Vec2::splat(5.0)),

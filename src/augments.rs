@@ -88,7 +88,7 @@ impl Augment {
             Augment::SortieExplosive => "Explosion en sortie de dash.",
             Augment::PesticideConcentre => "Poison +60 % de dégâts.",
             Augment::RateauAimante => "Râteau : rayon +40 % et ralentit 1,5 s.",
-            Augment::BuseHautePression => "Karcher : +25 % dégâts, recul ×1,6.",
+            Augment::BuseHautePression => "Karcher : +25 % de dégâts.",
             Augment::PelleElargie => "Armes de frappe : zone +35 %.",
             Augment::Momentum => "+2 %/s de dégâts en mouvement (max +40 %).",
             Augment::Photosynthese => "Régénère 2 PV/s au-dessus de 70 % de vitesse.",

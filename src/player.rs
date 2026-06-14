@@ -32,7 +32,6 @@ pub struct PlayerStats {
     pub aoe_mult: f32,
     pub poison_mult: f32,
     pub rake_mult: f32,
-    pub kb_mult: f32,
     pub pattes_mult: f32,
     // --- Refonte v0.3 : effets des stats-up (GDD §3.3) ---
     /// Multiplicateur d'intervalle d'attaque (= 100/AS%). Plus petit = plus rapide.
@@ -74,7 +73,6 @@ impl PlayerStats {
             aoe_mult: if augments.has(Augment::PelleElargie) { 1.35 } else { 1.0 },
             poison_mult: if augments.has(Augment::PesticideConcentre) { 1.6 } else { 1.0 },
             rake_mult: if augments.has(Augment::RateauAimante) { 1.4 } else { 1.0 },
-            kb_mult: if augments.has(Augment::BuseHautePression) { 1.6 } else { 1.0 },
             pattes_mult: 1.0 + 0.15 * meta.up_pattes as f32,
             attack_cd_mult: stats.attack_cd_mult(),
             regen_hps: stats.regen_hps(),
