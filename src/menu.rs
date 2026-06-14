@@ -96,7 +96,7 @@ fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding:
             p.spawn((
                 Text::new("LFG\nLittle Fast Gardener"),
                 TextFont { font_size: 48.0, ..default() },
-                TextLayout::new_with_justify(JustifyText::Center),
+                TextLayout::new_with_justify(Justify::Center),
                 TextColor(Color::srgb(0.7, 0.95, 0.6)),
             ));
             p.spawn((
