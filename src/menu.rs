@@ -94,8 +94,9 @@ fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding:
         ))
         .with_children(|p| {
             p.spawn((
-                Text::new("GameForge2026"),
+                Text::new("LFG\nLittle Fast Gardener"),
                 TextFont { font_size: 48.0, ..default() },
+                TextLayout::new_with_justify(JustifyText::Center),
                 TextColor(Color::srgb(0.7, 0.95, 0.6)),
             ));
             p.spawn((
@@ -150,7 +151,7 @@ fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding:
                 }
                 MenuView::Credits => {
                     p.spawn((
-                        Text::new("GameForge2026 — Équipe Reims"),
+                        Text::new("Little Fast Gardener — Équipe Reims"),
                         TextFont { font_size: 24.0, ..default() },
                         TextColor(Color::srgb(0.7, 0.95, 0.6)),
                         Node { margin: UiRect::bottom(Val::Px(24.0)), ..default() },

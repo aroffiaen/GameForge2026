@@ -1,4 +1,4 @@
-//! GameForge2026 — roguelite d'action top-down sur le thème de la vitesse.
+//! Little Fast Gardener (LFG) — roguelite d'action top-down sur le thème de la vitesse.
 //! « Plus le personnage va vite, plus il inflige de dégâts. »
 //!
 //! Voir le README et docs/GDD.md pour la conception complète.
@@ -42,7 +42,7 @@ fn main() {
         DefaultPlugins
             .set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "GameForge2026 — le jardin d'en bas".into(),
+                    title: "Little Fast Gardener — le jardin d'en bas".into(),
                     resolution: (w, h).into(),
                     ..default()
                 }),
