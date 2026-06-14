@@ -187,6 +187,7 @@ fn build_room(
     mut clear_color: ResMut<ClearColor>,
     mut toasts: MessageWriter<ToastMsg>,
     mut next_phase: ResMut<NextState<RunPhase>>,
+    sprites: Res<GameSprites>,
     mut player: Query<(&mut Transform, &mut Velocity), With<Player>>,
     cleanup: Query<
         Entity,
@@ -213,14 +214,46 @@ fn build_room(
     let biome = run.biome;
     clear_color.0 = biome.clear_color();
 
-    // Sol + murs.
+    // Textures de zone par biome.
+    let z = &sprites.zones;
+    let sol = match biome {
+        Biome::Jardin | Biome::Potager => Some(z.sol_jardin_potager.clone()),
+        Biome::Gravier => Some(z.sol_gravier.clone()),
+        Biome::Boue => Some(z.sol_boue.clone()),
+        Biome::TerreSeche => Some(z.sol_seche.clone()),
+    };
+    let mur = match biome {
+        Biome::Jardin | Biome::Boue | Biome::Gravier => Some(z.mur_jardin_boue_gravier.clone()),
+        Biome::Potager => Some(z.mur_potager.clone()),
+        Biome::TerreSeche => Some(z.mur_seche.clone()),
+    };
+    // `tile = true` → la texture se répète à sa taille native (murs) au lieu
+    // d'être étirée (sol).
+    let textured = |img: &Option<Handle<Image>>, fallback: Color, size: Vec2, tile: bool| -> Sprite {
+        match img {
+            Some(h) => Sprite {
+                image: h.clone(),
+                custom_size: Some(size),
+                image_mode: if tile {
+                    SpriteImageMode::Tiled { tile_x: true, tile_y: true, stretch_value: 1.0 }
+                } else {
+                    SpriteImageMode::Auto
+                },
+                ..default()
+            },
+            None => Sprite::from_color(fallback, size),
+        }
+    };
+
+    // Sol (tuilé sur toute l'arène).
     commands.spawn((
         RoomEntity,
-        Sprite::from_color(biome.ground_color(), arena.half * 2.0 + Vec2::splat(8.0)),
+        textured(&sol, biome.ground_color(), arena.half * 2.0 + Vec2::splat(8.0), true),
         Transform::from_xyz(0.0, 0.0, -10.0),
     ));
+    // Murs : bordure épaisse, texture tuilée (structure répétée, pas étirée).
     let wall_color = biome.clear_color().mix(&Color::BLACK, 0.3);
-    let t = 14.0;
+    let t = 64.0;
     for (pos, size) in [
         (Vec2::new(0.0, arena.half.y + t / 2.0), Vec2::new(arena.half.x * 2.0 + t * 2.0, t)),
         (Vec2::new(0.0, -arena.half.y - t / 2.0), Vec2::new(arena.half.x * 2.0 + t * 2.0, t)),
@@ -229,7 +262,7 @@ fn build_room(
     ] {
         commands.spawn((
             RoomEntity,
-            Sprite::from_color(wall_color, size),
+            textured(&mur, wall_color, size, true),
             Transform::from_translation(pos.extend(5.0)),
         ));
     }
@@ -395,7 +428,7 @@ fn resolve_chrono(
         run.momentum = (run.momentum + 1).min(3);
         result.write(RoomResultMsg {
             text: format!(
-                "RÉUSSI — {} +{gain:.0}%   (⏱ {elapsed:.1}s ≤ {target:.1}s)",
+                "RÉUSSI — {} +{gain:.0}%   ({elapsed:.1}s ≤ {target:.1}s)",
                 bet.label()
             ),
             good: true,
@@ -407,7 +440,7 @@ fn resolve_chrono(
         run.momentum = (run.momentum - 1).max(-2);
         result.write(RoomResultMsg {
             text: format!(
-                "RATÉ — {} −{loss:.0}%   (⏱ {elapsed:.1}s > {target:.1}s)",
+                "RATÉ — {} −{loss:.0}%   ({elapsed:.1}s > {target:.1}s)",
                 bet.label()
             ),
             good: false,

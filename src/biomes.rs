@@ -17,17 +17,14 @@ pub enum Biome {
     TerreSeche,
     /// Terre grasse, légumes et bave. Boss : Méga-Limace.
     Potager,
-    /// Pierre et joints urbains. Boss : Araignée géante.
-    Dalles,
 }
 
-pub const ALL_BIOMES: [Biome; 6] = [
+pub const ALL_BIOMES: [Biome; 5] = [
     Biome::Jardin,
     Biome::Gravier,
     Biome::Boue,
     Biome::TerreSeche,
     Biome::Potager,
-    Biome::Dalles,
 ];
 
 impl Biome {
@@ -38,7 +35,6 @@ impl Biome {
             Biome::Boue => "La Boue",
             Biome::TerreSeche => "La Terre Sèche",
             Biome::Potager => "Le Potager",
-            Biome::Dalles => "Les Dalles",
         }
     }
 
@@ -50,7 +46,6 @@ impl Biome {
             Biome::Boue => "Terre détrempée, mousse et bave. Lent, collant.",
             Biome::TerreSeche => "Sol craquelé et brûlant. Ça pique et ça tanke.",
             Biome::Potager => "Terre grasse, légumes et bave. Lent, mou, collant.",
-            Biome::Dalles => "Pierre et joints. Sec, dur, et ça grouille vite.",
         }
     }
 
@@ -62,7 +57,6 @@ impl Biome {
             Biome::Boue => Color::srgb(0.10, 0.10, 0.07),
             Biome::TerreSeche => Color::srgb(0.24, 0.19, 0.08),
             Biome::Potager => Color::srgb(0.12, 0.16, 0.07),
-            Biome::Dalles => Color::srgb(0.12, 0.13, 0.15),
         }
     }
 
@@ -74,7 +68,6 @@ impl Biome {
             Biome::Boue => Color::srgb(0.28, 0.22, 0.13),
             Biome::TerreSeche => Color::srgb(0.55, 0.45, 0.20),
             Biome::Potager => Color::srgb(0.34, 0.30, 0.16),
-            Biome::Dalles => Color::srgb(0.40, 0.42, 0.46),
         }
     }
 
@@ -86,7 +79,6 @@ impl Biome {
             Biome::Boue => Color::srgb(0.40, 0.32, 0.18),
             Biome::TerreSeche => Color::srgb(0.70, 0.60, 0.30),
             Biome::Potager => Color::srgb(0.55, 0.50, 0.25),
-            Biome::Dalles => Color::srgb(0.55, 0.58, 0.62),
         }
     }
 
@@ -115,10 +107,6 @@ impl Biome {
             (Biome::Potager, 0) => &[EnemyKind::Fourmi, EnemyKind::Criquet],
             (Biome::Potager, 1) => &[EnemyKind::Cigale, EnemyKind::Guepe],
             (Biome::Potager, _) => &[EnemyKind::Escargot, EnemyKind::Araignee],
-            // Dalles : sec et grouillant, mêlée et tir.
-            (Biome::Dalles, 0) => &[EnemyKind::Criquet, EnemyKind::Fourmi],
-            (Biome::Dalles, 1) => &[EnemyKind::Araignee, EnemyKind::Guepe],
-            (Biome::Dalles, _) => &[EnemyKind::Escargot],
         }
     }
 
@@ -129,7 +117,6 @@ impl Biome {
             Biome::Boue => BossKind::Gromp,
             Biome::TerreSeche => BossKind::Scorpion,
             Biome::Potager => BossKind::MegaLimace,
-            Biome::Dalles => BossKind::AraigneeGeante,
         }
     }
 
@@ -141,7 +128,6 @@ impl Biome {
             Biome::Boue => "boue",
             Biome::TerreSeche => "terre_seche",
             Biome::Potager => "potager",
-            Biome::Dalles => "dalles",
         }
     }
 

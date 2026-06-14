@@ -10,6 +10,7 @@ mod cabanon;
 mod common;
 mod enemies;
 mod healthbar;
+mod menu;
 mod meta;
 mod player;
 mod rooms;
@@ -63,21 +64,36 @@ fn main() {
     // que la ressource existe quand le cabanon se construit au démarrage.
     let asset_server = app.world().resource::<AssetServer>().clone();
     app.insert_resource(common::GameSprites {
+        // Ordre [R+L, L+R] pour le cycle de course (RL → rien → LR → rien).
         legs_walk: [
-            asset_server.load("sprites/LR-walk-legs.png"),
-            asset_server.load("sprites/RL-walk-legs.png"),
+            asset_server.load("sprites/jardinier/R+L.png"),
+            asset_server.load("sprites/jardinier/L+R.png"),
         ],
-        legs_dash: asset_server.load("sprites/Jambe-dash.png"),
-        arms: asset_server.load("sprites/jardinier-bras.png"),
-        body: asset_server.load("sprites/jardinier.png"),
+        body_idle: [
+            asset_server.load("sprites/jardinier/premier-sprite-player.png"),
+            asset_server.load("sprites/jardinier/second-sprite-player.png"),
+        ],
+        body_damage: asset_server.load("sprites/jardinier/damage.png"),
+        body_dash: asset_server.load("sprites/jardinier/full-dash.png"),
         bousier: asset_server.load("sprites/bousier.png"),
-        pelle: asset_server.load("sprites/pelle-arme.png"),
+        zones: common::ZoneTextures {
+            sol_jardin_potager: asset_server.load("sprites/zones/Sol_Jardin_Potager.png"),
+            sol_gravier: asset_server.load("sprites/zones/Sol_Gravier.png"),
+            sol_boue: asset_server.load("sprites/zones/Sol_boue.png"),
+            sol_seche: asset_server.load("sprites/zones/Sol_Seche.png"),
+            mur_jardin_boue_gravier: asset_server
+                .load("sprites/zones/Mur_Jardin_Boue_Gravier.png"),
+            mur_potager: asset_server.load("sprites/zones/Mur_Potager.png"),
+            mur_seche: asset_server.load("sprites/zones/Mur_Seche.png"),
+            terrasse: asset_server.load("sprites/zones/Terrasse.png"),
+        },
     });
 
     app.insert_resource(ClearColor(Color::srgb(0.10, 0.08, 0.06)))
         .add_plugins((
             common::CorePlugin,
             meta::MetaPlugin,
+            menu::MenuPlugin,
             stats::StatsPlugin,
             player::PlayerPlugin,
             weapons::WeaponsPlugin,

@@ -19,8 +19,10 @@ pub const PLAYER_RADIUS: f32 = 12.0;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
-    /// Le hub : cabanon, bousier, établi (GDD §11.1).
+    /// Le menu titre au lancement (Play / Settings / Quitter).
     #[default]
+    Title,
+    /// Le hub : cabanon, bousier, établi (GDD §11.1).
     Cabanon,
     /// Une run dans le jardin (GDD §6).
     EnRun,
@@ -41,6 +43,128 @@ pub enum RunPhase {
     DoorOpen,
     /// Choix d'augment (3 → 1, GDD §5.1).
     Augment,
+}
+
+// ---------------------------------------------------------------------------
+// Keybinds (touches configurables, persistées dans save.ron)
+// ---------------------------------------------------------------------------
+
+/// Touches d'action configurables (déplacement, dash, interagir). Échap (pause)
+/// et les clics souris (armes) restent fixes.
+#[derive(Resource, Clone)]
+pub struct Keybinds {
+    pub up: KeyCode,
+    pub down: KeyCode,
+    pub left: KeyCode,
+    pub right: KeyCode,
+    pub dash: KeyCode,
+    pub interact: KeyCode,
+}
+
+impl Default for Keybinds {
+    fn default() -> Self {
+        // Par défaut : ZQSD sur clavier AZERTY (= physique WASD côté Bevy).
+        Self {
+            up: KeyCode::KeyW,
+            down: KeyCode::KeyS,
+            left: KeyCode::KeyA,
+            right: KeyCode::KeyD,
+            dash: KeyCode::Space,
+            interact: KeyCode::KeyE,
+        }
+    }
+}
+
+/// Les 6 actions remappables.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    Up,
+    Down,
+    Left,
+    Right,
+    Dash,
+    Interact,
+}
+
+impl Action {
+    pub const ALL: [Action; 6] =
+        [Action::Up, Action::Down, Action::Left, Action::Right, Action::Dash, Action::Interact];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Action::Up => "Haut",
+            Action::Down => "Bas",
+            Action::Left => "Gauche",
+            Action::Right => "Droite",
+            Action::Dash => "Dash",
+            Action::Interact => "Interagir",
+        }
+    }
+
+    pub fn get(self, kb: &Keybinds) -> KeyCode {
+        match self {
+            Action::Up => kb.up,
+            Action::Down => kb.down,
+            Action::Left => kb.left,
+            Action::Right => kb.right,
+            Action::Dash => kb.dash,
+            Action::Interact => kb.interact,
+        }
+    }
+
+    pub fn set(self, kb: &mut Keybinds, key: KeyCode) {
+        match self {
+            Action::Up => kb.up = key,
+            Action::Down => kb.down = key,
+            Action::Left => kb.left = key,
+            Action::Right => kb.right = key,
+            Action::Dash => kb.dash = key,
+            Action::Interact => kb.interact = key,
+        }
+    }
+}
+
+/// Touches assignables ↔ libellés (clavier **AZERTY**). Sert au capture (quelles
+/// touches sont bindables), à l'affichage, et à la persistance par libellé.
+pub const BINDABLE: &[(KeyCode, &str)] = &[
+    (KeyCode::KeyW, "Z"),
+    (KeyCode::KeyA, "Q"),
+    (KeyCode::KeyS, "S"),
+    (KeyCode::KeyD, "D"),
+    (KeyCode::KeyE, "E"),
+    (KeyCode::KeyR, "R"),
+    (KeyCode::KeyT, "T"),
+    (KeyCode::KeyF, "F"),
+    (KeyCode::KeyG, "G"),
+    (KeyCode::KeyC, "C"),
+    (KeyCode::KeyV, "V"),
+    (KeyCode::KeyB, "B"),
+    (KeyCode::KeyX, "X"),
+    (KeyCode::ArrowUp, "↑"),
+    (KeyCode::ArrowDown, "↓"),
+    (KeyCode::ArrowLeft, "←"),
+    (KeyCode::ArrowRight, "→"),
+    (KeyCode::Space, "Espace"),
+    (KeyCode::ShiftLeft, "Maj G"),
+    (KeyCode::ShiftRight, "Maj D"),
+    (KeyCode::ControlLeft, "Ctrl G"),
+    (KeyCode::ControlRight, "Ctrl D"),
+    (KeyCode::AltLeft, "Alt"),
+    (KeyCode::Digit1, "1"),
+    (KeyCode::Digit2, "2"),
+    (KeyCode::Digit3, "3"),
+    (KeyCode::Digit4, "4"),
+    (KeyCode::Digit5, "5"),
+];
+
+/// Libellé AZERTY d'une touche (pour l'affichage / la sauvegarde).
+pub fn key_label(key: KeyCode) -> &'static str {
+    BINDABLE.iter().find(|(k, _)| *k == key).map(|(_, l)| *l).unwrap_or("?")
+}
+
+/// Touche depuis son libellé (lecture de la sauvegarde).
+pub fn key_from_label(label: &str) -> Option<KeyCode> {
+    BINDABLE.iter().find(|(_, l)| *l == label).map(|(k, _)| *k)
 }
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -67,7 +191,7 @@ pub fn player_active(
     match state.get() {
         AppState::Cabanon | AppState::Terrasse => true,
         AppState::EnRun => matches!(phase.get(), RunPhase::Fighting | RunPhase::DoorOpen),
-        AppState::GameOver => false,
+        AppState::GameOver | AppState::Title => false,
     }
 }
 
@@ -192,18 +316,31 @@ pub struct HitFlash(pub Timer);
 /// Handles des sprites chargés une fois au démarrage.
 #[derive(Resource)]
 pub struct GameSprites {
-    /// Jambes : 2 frames de marche (alternées).
+    /// Jambes de marche : `[R+L, L+R]` (alternées dans le cycle de course).
     pub legs_walk: [Handle<Image>; 2],
-    /// Jambes : pose de dash.
-    pub legs_dash: Handle<Image>,
-    /// Bras (couche du milieu, orientée vers la visée).
-    pub arms: Handle<Image>,
-    /// Chapeau (couche du haut, teintée).
-    pub body: Handle<Image>,
+    /// Corps au repos : 2 frames d'animation idle (premier / second sprite).
+    pub body_idle: [Handle<Image>; 2],
+    /// Corps quand on encaisse un coup.
+    pub body_damage: Handle<Image>,
+    /// Corps pendant le dash.
+    pub body_dash: Handle<Image>,
     /// Le bousier (PNJ du cabanon).
     pub bousier: Handle<Image>,
-    /// Sprite de la pelle (arme).
-    pub pelle: Handle<Image>,
+    /// Textures de zones (sols, murs, terrasse).
+    pub zones: ZoneTextures,
+}
+
+/// Textures de sol/mur par biome (GDD §7) + sol de la terrasse.
+#[derive(Clone)]
+pub struct ZoneTextures {
+    pub sol_jardin_potager: Handle<Image>,
+    pub sol_gravier: Handle<Image>,
+    pub sol_boue: Handle<Image>,
+    pub sol_seche: Handle<Image>,
+    pub mur_jardin_boue_gravier: Handle<Image>,
+    pub mur_potager: Handle<Image>,
+    pub mur_seche: Handle<Image>,
+    pub terrasse: Handle<Image>,
 }
 
 /// Demi-dimensions de l'arène courante.

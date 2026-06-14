@@ -37,6 +37,51 @@ pub struct MetaSave {
     pub deaths: u32,
     /// Throttle : max 2 outils récupérés par run (GDD §11.3).
     pub tools_bought_this_cycle: u8,
+    /// Touches configurables, persistées par libellé (Settings).
+    pub keybinds: KeybindsSave,
+}
+
+/// Représentation sérialisable des keybinds (libellés AZERTY).
+#[derive(Resource, Serialize, Deserialize, Clone)]
+#[serde(default)]
+pub struct KeybindsSave {
+    pub up: String,
+    pub down: String,
+    pub left: String,
+    pub right: String,
+    pub dash: String,
+    pub interact: String,
+}
+
+impl Default for KeybindsSave {
+    fn default() -> Self {
+        Self::from_binds(&Keybinds::default())
+    }
+}
+
+impl KeybindsSave {
+    pub fn from_binds(kb: &Keybinds) -> Self {
+        Self {
+            up: key_label(kb.up).to_string(),
+            down: key_label(kb.down).to_string(),
+            left: key_label(kb.left).to_string(),
+            right: key_label(kb.right).to_string(),
+            dash: key_label(kb.dash).to_string(),
+            interact: key_label(kb.interact).to_string(),
+        }
+    }
+
+    pub fn to_binds(&self) -> Keybinds {
+        let d = Keybinds::default();
+        Keybinds {
+            up: key_from_label(&self.up).unwrap_or(d.up),
+            down: key_from_label(&self.down).unwrap_or(d.down),
+            left: key_from_label(&self.left).unwrap_or(d.left),
+            right: key_from_label(&self.right).unwrap_or(d.right),
+            dash: key_from_label(&self.dash).unwrap_or(d.dash),
+            interact: key_from_label(&self.interact).unwrap_or(d.interact),
+        }
+    }
 }
 
 impl Default for MetaSave {
@@ -66,6 +111,7 @@ impl Default for MetaSave {
             runs: 0,
             deaths: 0,
             tools_bought_this_cycle: 0,
+            keybinds: KeybindsSave::default(),
         }
     }
 }
@@ -156,9 +202,16 @@ pub struct MetaPlugin;
 impl Plugin for MetaPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(load_meta())
+            .init_resource::<Keybinds>()
+            .add_systems(Startup, sync_keybinds_from_save)
             .add_systems(Update, achievements_engine)
             .add_systems(OnEnter(AppState::Terrasse), terrasse_reached);
     }
+}
+
+/// Au démarrage, construit la ressource `Keybinds` depuis la sauvegarde.
+fn sync_keybinds_from_save(meta: Res<MetaSave>, mut kb: ResMut<Keybinds>) {
+    *kb = meta.keybinds.to_binds();
 }
 
 /// Écoute les morts d'ennemis et déverrouille la « récupérabilité » des

@@ -1,6 +1,6 @@
 (
-    pattes: 2917,
-    total_kills: 2326,
+    pattes: 6706,
+    total_kills: 3867,
     unlocked: [
         Pesticide,
         Rateau,
@@ -37,8 +37,8 @@
     up_dash: 2,
     up_pattes: 2,
     terrasse_unlocked: true,
-    best_terrasse: 78.83161,
-    runs: 43,
-    deaths: 38,
+    best_terrasse: 92.41865,
+    runs: 62,
+    deaths: 43,
     tools_bought_this_cycle: 0,
 )

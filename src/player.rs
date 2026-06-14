@@ -139,11 +139,7 @@ struct PlayerLegs {
     frame: usize,
 }
 
-/// Couche du milieu : les bras, qui tiennent les armes (orientés vers la visée).
-#[derive(Component)]
-struct PlayerArms;
-
-/// Couche du haut : le chapeau, teinté (i-frames dash → bleu, dégâts → rouge).
+/// Couche du haut : le corps du jardinier, teinté (i-frames dash → bleu, dégâts → rouge).
 #[derive(Component)]
 struct PlayerBody;
 
@@ -153,11 +149,11 @@ struct AimOriented;
 
 /// Échelle de rendu (unités monde par pixel source). Un seul réglage pour
 /// toutes les couches → elles restent à la même échelle et alignées.
-const PLAYER_SCALE: f32 = 0.8;
-/// Jambes et bras sont dessinés sur un canvas 54×54.
+// L'art du jardinier n'occupe qu'~18 % de son canvas (beaucoup de transparent)
+// → grosse échelle pour un perso bien visible. Knob de taille du perso.
+const PLAYER_SCALE: f32 = 5.5;
+/// Toutes les couches du perso partagent un canvas 54×54 (alignées).
 const LIMB_SIZE: f32 = 54.0 * PLAYER_SCALE;
-/// Le chapeau (jardinier.png) est un canvas 32×32, centré.
-const HAT_SIZE: f32 = 32.0 * PLAYER_SCALE;
 
 // ---------------------------------------------------------------------------
 // Plugin
@@ -189,7 +185,7 @@ impl Plugin for PlayerPlugin {
                     tick_iframes,
                     animate_legs,
                     orient_body,
-                    tint_body,
+                    animate_body,
                     momentum_system,
                     photosynthese,
                     regen_health,
@@ -216,7 +212,6 @@ pub fn spawn_player(
     pos: Vec2,
 ) -> Entity {
     let limb = Vec2::splat(LIMB_SIZE);
-    let hat = Vec2::splat(HAT_SIZE);
     commands
         .spawn((
             Player,
@@ -239,9 +234,10 @@ pub fn spawn_player(
         ))
         .with_children(|parent| {
             // Couche 1 — jambes (sous tout le reste), orientées vers la marche.
+            // Cachées à l'arrêt (réaffichées par `animate_legs`).
             parent.spawn((
                 PlayerLegs {
-                    anim: Timer::from_seconds(0.15, TimerMode::Repeating),
+                    anim: Timer::from_seconds(0.12, TimerMode::Repeating),
                     frame: 0,
                 },
                 Sprite {
@@ -249,20 +245,10 @@ pub fn spawn_player(
                     custom_size: Some(limb),
                     ..default()
                 },
+                Visibility::Hidden,
                 Transform::from_xyz(0.0, 0.0, -1.0),
             ));
-            // Couche 2 — bras (centrés), orientés vers la visée.
-            parent.spawn((
-                PlayerArms,
-                AimOriented,
-                Sprite {
-                    image: sprites.arms.clone(),
-                    custom_size: Some(limb),
-                    ..default()
-                },
-                Transform::from_xyz(0.0, 0.0, 0.0),
-            ));
-            // Couche 3 — slots d'armes (formes colorées), tenus par les bras.
+            // Couche 2 — slots d'armes (formes colorées).
             parent.spawn((
                 crate::weapons::WeaponSprite(0),
                 Sprite::from_color(Color::NONE, Vec2::new(4.0, 4.0)),
@@ -273,13 +259,14 @@ pub fn spawn_player(
                 Sprite::from_color(Color::NONE, Vec2::new(4.0, 4.0)),
                 Transform::from_xyz(0.0, 0.0, 0.5),
             ));
-            // Couche 4 — chapeau (au-dessus), orienté vers la visée, teinté.
+            // Couche 3 — corps du jardinier (au-dessus), orienté visée.
+            // Sprite changé selon l'état (idle / damage / dash) par `animate_body`.
             parent.spawn((
                 PlayerBody,
                 AimOriented,
                 Sprite {
-                    image: sprites.body.clone(),
-                    custom_size: Some(hat),
+                    image: sprites.body_idle[0].clone(),
+                    custom_size: Some(limb),
                     ..default()
                 },
                 Transform::from_xyz(0.0, 0.0, 1.0),
@@ -523,8 +510,8 @@ fn speed_feedback(
         commands.spawn((
             TrailGhost,
             Sprite {
-                image: sprites.body.clone(),
-                custom_size: Some(Vec2::splat(HAT_SIZE)),
+                image: sprites.body_idle[0].clone(),
+                custom_size: Some(Vec2::splat(LIMB_SIZE)),
                 color: Color::srgb(1.0, 0.6, 0.25).with_alpha(alpha),
                 ..default()
             },
@@ -541,42 +528,53 @@ fn tick_iframes(time: Res<Time>, mut player: Query<&mut Iframes, With<Player>>) 
     }
 }
 
-/// Couche 1 : oriente les jambes vers le déplacement et anime la marche
-/// (alternance des 2 frames), pose de dash pendant le dash.
+/// Couche 1 : les jambes. Cycle de course en **4 temps** — RL → (rien) → LR →
+/// (rien) → boucle — pour un pas plus naturel. **À l'arrêt : pas de jambes.**
 fn animate_legs(
     time: Res<Time>,
     sprites: Res<GameSprites>,
     player: Query<(&Velocity, &Dash), With<Player>>,
-    mut legs: Query<(&mut PlayerLegs, &mut Sprite, &mut Transform)>,
+    mut legs: Query<(&mut PlayerLegs, &mut Sprite, &mut Transform, &mut Visibility)>,
 ) {
     let Ok((vel, dash)) = player.single() else {
         return;
     };
-    let Ok((mut state, mut sprite, mut tf)) = legs.single_mut() else {
+    let Ok((mut state, mut sprite, mut tf, mut vis)) = legs.single_mut() else {
         return;
     };
     let speed = vel.0.length();
-    // Oriente les jambes vers la marche (les pieds pointent vers +Y dans le
-    // sprite → on retranche 90°). On garde l'orientation précédente à l'arrêt.
+    let moving = speed > 12.0 || dash.dashing();
+
+    // Immobile : on retire les jambes et on remet le cycle à zéro.
+    if !moving {
+        *vis = Visibility::Hidden;
+        state.frame = 0;
+        state.anim.reset();
+        return;
+    }
+
+    // Oriente les jambes vers le déplacement (les pieds pointent vers +Y → -90°).
     if speed > 5.0 {
         tf.rotation = Quat::from_rotation_z(vel.0.to_angle() - std::f32::consts::FRAC_PI_2);
     }
-    if dash.dashing() {
-        sprite.image = sprites.legs_dash.clone();
-        return;
+
+    // Avance le cycle 4 temps ; cadence proportionnelle à la vitesse.
+    let rate = (0.13 - 0.00018 * speed).clamp(0.06, 0.13);
+    state.anim.set_duration(std::time::Duration::from_secs_f32(rate));
+    state.anim.tick(time.delta());
+    if state.anim.just_finished() {
+        state.frame = (state.frame + 1) % 4;
     }
-    if speed > 10.0 {
-        // Cadence de l'animation proportionnelle à la vitesse.
-        let rate = (0.22 - 0.0004 * speed).clamp(0.08, 0.22);
-        state.anim.set_duration(std::time::Duration::from_secs_f32(rate));
-        state.anim.tick(time.delta());
-        if state.anim.just_finished() {
-            state.frame = (state.frame + 1) % 2;
+    match state.frame {
+        0 => {
+            *vis = Visibility::Visible;
+            sprite.image = sprites.legs_walk[0].clone(); // RL
         }
-        sprite.image = sprites.legs_walk[state.frame].clone();
-    } else {
-        // À l'arrêt : pose neutre (1re frame).
-        sprite.image = sprites.legs_walk[0].clone();
+        2 => {
+            *vis = Visibility::Visible;
+            sprite.image = sprites.legs_walk[1].clone(); // LR
+        }
+        _ => *vis = Visibility::Hidden, // temps 1 & 3 : pas de jambes
     }
 }
 
@@ -589,11 +587,13 @@ fn orient_body(aim: Res<Aim>, mut layers: Query<&mut Transform, With<AimOriented
     }
 }
 
-/// Couche 2 (teinte) : rouge quand on encaisse, bleu pendant les i-frames de
-/// dash, sinon teinte normale (blanc = sprite tel quel).
-fn tint_body(
+/// Couche corps : choisit le sprite selon l'état — `damage` quand on encaisse,
+/// `dash` pendant le dash, sinon **animation idle** (premier ↔ second sprite).
+fn animate_body(
     time: Res<Time>,
     mut commands: Commands,
+    sprites: Res<GameSprites>,
+    mut idle_t: Local<f32>,
     mut player: Query<(Entity, &Iframes, &Dash, Option<&mut HitFlash>), With<Player>>,
     mut body: Query<&mut Sprite, With<PlayerBody>>,
 ) {
@@ -604,28 +604,37 @@ fn tint_body(
         return;
     };
 
-    // Priorité : flash de dégâts (rouge) > i-frames (bleu clignotant) > normal.
+    // Priorité 1 : flash de dégâts → sprite « damage » (teinté rouge).
     if let Some(mut flash) = hit_flash {
         flash.0.tick(time.delta());
-        if flash.0.is_finished() {
-            commands.entity(entity).remove::<HitFlash>();
-        } else {
-            sprite.color = Color::srgb(1.0, 0.3, 0.3);
+        if !flash.0.is_finished() {
+            sprite.image = sprites.body_damage.clone();
+            sprite.color = Color::srgb(1.0, 0.55, 0.55);
             return;
         }
+        commands.entity(entity).remove::<HitFlash>();
     }
 
-    if !iframes.0.is_finished() {
-        // Pendant le dash : bleu franc. Hors dash (coup encaissé) : bleu clignotant.
-        let blink = dash.dashing() || (iframes.0.elapsed_secs() * 30.0).sin() > 0.0;
-        sprite.color = if blink {
-            Color::srgb(0.55, 0.8, 1.0)
-        } else {
-            Color::srgb(0.85, 0.95, 1.0)
-        };
-    } else {
-        sprite.color = Color::WHITE;
+    // Priorité 2 : dash → sprite « dash » (teinté bleu).
+    if dash.dashing() {
+        sprite.image = sprites.body_dash.clone();
+        sprite.color = Color::srgb(0.7, 0.9, 1.0);
+        return;
     }
+
+    // Priorité 3 : i-frames hors dash (coup encaissé) → sprite damage clignotant.
+    if !iframes.0.is_finished() {
+        sprite.image = sprites.body_damage.clone();
+        let blink = (iframes.0.elapsed_secs() * 30.0).sin() > 0.0;
+        sprite.color = if blink { Color::srgb(1.0, 0.7, 0.7) } else { Color::WHITE };
+        return;
+    }
+
+    // Sinon : animation idle (1 s par cycle, ~0.5 s par frame).
+    *idle_t = (*idle_t + time.delta_secs()).rem_euclid(1.0);
+    let frame = if *idle_t < 0.5 { 0 } else { 1 };
+    sprite.image = sprites.body_idle[frame].clone();
+    sprite.color = Color::WHITE;
 }
 
 /// Régénération passive de PV (stat « Régén », GDD §3.3). Ne ressuscite pas un

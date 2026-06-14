@@ -132,7 +132,7 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             profile: Profile::Hold,
             dmg: 22.0, // DPS de la lame (relevé : la contrainte mérite un vrai punch)
             cd: 0.10,  // intervalle de tick (moins de ticks/s, mais plus gros chacun)
-            range: 185.0, // longueur de la ligne (allongée)
+            range: 240.0, // longueur de la ligne (allongée)
             radius: 22.0, // demi-largeur
             inner: 0.0,
             cone: 0.0,
@@ -146,7 +146,7 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             dmg: 18.0, // ~15 DPS (18/1.2)
             cd: 1.2,
             range: 130.0, // distance de l'impact
-            radius: 46.0, // rayon de l'impact
+            radius: 64.0, // rayon de l'impact (AoE élargie)
             inner: 0.0,
             cone: 0.0,
             color: Color::srgb(0.5, 0.55, 0.6),
@@ -158,7 +158,7 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             profile: Profile::Strike,
             dmg: 14.0, // ~15 DPS (14/0.9)
             cd: 0.9,
-            range: 175.0, // allonge du cône
+            range: 220.0, // allonge du cône
             radius: 0.0,
             inner: 0.0,
             cone: 50.0,
@@ -197,7 +197,7 @@ pub fn def(kind: WeaponKind) -> WeaponDef {
             profile: Profile::Strike,
             dmg: 13.0, // ~15 DPS (13/0.85)
             cd: 0.85,
-            range: 205.0, // allonge de l'estoc
+            range: 290.0, // allonge de l'estoc (rallongée)
             radius: 0.0,
             inner: 0.0,
             cone: 16.0, // fin (comme une lance)
@@ -721,14 +721,22 @@ fn karcher_system(
             }
         }
 
-        // Gouttelettes du jet : flashs répartis DANS le cône, sans vélocité —
-        // ils ne « traversent » plus l'écran (ne sont pas des projectiles).
-        for _ in 0..6 {
+        // Gouttelettes du jet (purement visuel) : jet dense qui s'estompe en
+        // bout de portée. Réparties DANS le cône, sans vélocité.
+        for _ in 0..16 {
             let spread = rng.random_range(-half..half);
             let dir = Vec2::from_angle(aim.dir.to_angle() + spread);
-            let dist = rng.random_range(20.0..weapon.range);
+            // t = 0 près du joueur, 1 en bout de portée.
+            let t = rng.random_range(0.0..1.0_f32);
+            let dist = 18.0 + t * (weapon.range - 18.0);
+            let fade = 1.0 - t; // plus on est loin, plus c'est ténu
+            let alpha = 0.2 + 0.65 * fade;
+            let s = 4.0 + 3.0 * fade; // gouttes plus fines en bout de jet
             commands.spawn((
-                Sprite::from_color(Color::srgb(0.5, 0.8, 1.0).with_alpha(0.8), Vec2::splat(5.0)),
+                Sprite::from_color(
+                    Color::srgb(0.6, 0.85, 1.0).with_alpha(alpha),
+                    Vec2::splat(s),
+                ),
                 Transform::from_translation((player_pos + dir * dist).extend(8.0)),
                 Lifetime::secs(0.12),
             ));
@@ -918,45 +926,125 @@ fn puddle_system(
     }
 }
 
-/// Synchronise les sprites d'armes (séparés du corps) : équipement, visée,
-/// animation de coup.
+/// Taille des sprites d'armes : même canvas que le joueur (= `LIMB_SIZE`, soit
+/// 54 × PLAYER_SCALE) puisque ce sont des sprites « bras + arme » centrés.
+/// À garder synchro avec `PLAYER_SCALE` de `player.rs`.
+const WEAPON_SPRITE_SIZE: f32 = 297.0;
+
+/// Chemin du sprite d'arme selon l'arme, le **slot** (0 = Left/clic G, 1 =
+/// Right/clic D) et l'état : `swing > 0` = coup en cours, `frame2` = alternance
+/// de lame (tronçonneuse). Frappe : tenue → attaque. Râteau : tenue → charge →
+/// grab. Tronçonneuse : 2 frames qui alternent.
+fn weapon_sprite_path(kind: WeaponKind, slot: usize, swing: f32, frame2: bool) -> &'static str {
+    let left = slot == 0;
+    match kind {
+        WeaponKind::Pesticide => {
+            if left { "sprites/Armes/Left/pesticide.png" } else { "sprites/Armes/Right/arrosoir.png" }
+        }
+        WeaponKind::Pelle => {
+            if left {
+                "sprites/Armes/Left/Mid range/pelle attaque.png"
+            } else {
+                "sprites/Armes/Right/Mid range/pelle-arme.png"
+            }
+        }
+        WeaponKind::Karcher => {
+            if left {
+                "sprites/Armes/Left/Long range/Karcher L.png"
+            } else {
+                "sprites/Armes/Right/Long range/Karcher R.png"
+            }
+        }
+        WeaponKind::Pioche => {
+            if left {
+                "sprites/Armes/Left/Mid range/Pioche.png"
+            } else {
+                "sprites/Armes/Right/Mid range/Pioche.png"
+            }
+        }
+        WeaponKind::Hache => {
+            if left {
+                "sprites/Armes/Left/Short range/hache.png"
+            } else {
+                "sprites/Armes/Right/Short range/hache R.png"
+            }
+        }
+        WeaponKind::Serpe => {
+            if left {
+                "sprites/Armes/Left/Short range/serpe L attaque.png"
+            } else {
+                "sprites/Armes/Right/Short range/serpe R attaque.png"
+            }
+        }
+        WeaponKind::PicDeVigne => {
+            if left {
+                "sprites/Armes/Left/Long range/piquet de vigne.png"
+            } else {
+                "sprites/Armes/Right/Long range/piquet de vigne.png"
+            }
+        }
+        WeaponKind::Faux => match (left, swing > 0.0) {
+            (true, false) => "sprites/Armes/Left/Long range/Faux pos.png",
+            (true, true) => "sprites/Armes/Left/Long range/Faux attaque.png",
+            (false, false) => "sprites/Armes/Right/Long range/faux + bras.png",
+            (false, true) => "sprites/Armes/Right/Long range/faux-attaque + bras.png",
+        },
+        WeaponKind::Tronconneuse => match (left, frame2) {
+            (true, false) => "sprites/Armes/Left/Mid range/chainsaw1.png",
+            (true, true) => "sprites/Armes/Left/Mid range/chainsaw 2.png",
+            (false, false) => "sprites/Armes/Right/Mid range/Chainsaw 1.png",
+            (false, true) => "sprites/Armes/Right/Mid range/chainsaw 2.png",
+        },
+        WeaponKind::Rateau => {
+            // tenue → charge (windup) → grab (aspiration), via la décroissance du swing.
+            let phase = if swing <= 0.0 {
+                0
+            } else if swing > 0.12 {
+                1
+            } else {
+                2
+            };
+            match (left, phase) {
+                (true, 0) => "sprites/Armes/Left/Long range/bras tendu rateau.png",
+                (true, 1) => "sprites/Armes/Left/Long range/charge rateau.png",
+                (true, _) => "sprites/Armes/Left/Long range/rateau grab.png",
+                (false, 0) => "sprites/Armes/Right/Long range/rateau.png",
+                (false, 1) => "sprites/Armes/Right/Long range/charge-rateau.png",
+                (false, _) => "sprites/Armes/Right/Long range/rateau-tendu.png",
+            }
+        }
+    }
+}
+
+/// Synchronise les sprites d'armes (séparés du corps) : sprite selon le slot
+/// (Left/Right) et l'état, visée, et thrust pendant le coup.
 fn sync_weapon_sprites(
+    time: Res<Time>,
+    asset_server: Res<AssetServer>,
     loadout: Res<Loadout>,
     aim: Res<Aim>,
     swings: Res<SwingAnims>,
-    sprites: Res<GameSprites>,
     mut q: Query<(&WeaponSprite, &mut Sprite, &mut Transform)>,
 ) {
+    let frame2 = (time.elapsed_secs() * 12.0) as i64 % 2 == 1;
     for (slot_marker, mut sprite, mut tf) in &mut q {
         let slot = slot_marker.0;
         match loadout.0[slot] {
             None => {
                 sprite.color = Color::NONE;
             }
-            Some(WeaponKind::Pelle) => {
-                // La pelle a son propre sprite (arme à deux mains), centrée
-                // devant le perso et orientée vers la visée.
-                sprite.image = sprites.pelle.clone();
-                sprite.color = Color::WHITE;
-                sprite.custom_size = Some(Vec2::splat(46.0));
-                let swing = swings.0[slot];
-                let offset = aim.dir * (10.0 + swing * 90.0);
-                tf.translation = offset.extend(2.0);
-                tf.rotation = Quat::from_rotation_z(aim.dir.to_angle());
-            }
             Some(kind) => {
-                let weapon = def(kind);
-                // Forme colorée (placeholder en attendant sprite-arme-R/L).
-                sprite.image = Handle::default();
-                sprite.color = weapon.color;
-                sprite.custom_size = Some(weapon.size);
-                let side = if slot == 0 { 1.0 } else { -1.0 };
-                let perp = Vec2::new(-aim.dir.y, aim.dir.x) * 7.0 * side;
                 let swing = swings.0[slot];
-                let reach = 14.0 + swing * 120.0;
-                let offset = aim.dir * reach + perp;
-                tf.translation = offset.extend(2.0);
-                tf.rotation = Quat::from_rotation_z(aim.dir.to_angle());
+                sprite.image = asset_server.load(weapon_sprite_path(kind, slot, swing, frame2));
+                sprite.color = Color::WHITE;
+                sprite.custom_size = Some(Vec2::splat(WEAPON_SPRITE_SIZE));
+                // Sprite « bras + arme » centré sur le joueur (même canvas),
+                // orienté vers la visée (l'avant pointe +Y → −90°) ; léger coup
+                // en avant pendant le swing.
+                let thrust = aim.dir * (swing * 40.0);
+                tf.translation = thrust.extend(2.0);
+                tf.rotation =
+                    Quat::from_rotation_z(aim.dir.to_angle() - std::f32::consts::FRAC_PI_2);
             }
         }
     }

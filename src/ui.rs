@@ -394,7 +394,7 @@ fn update_chrono(run: Res<RunState>, mut q: Query<(&mut Text, &mut TextColor), W
     let Ok((mut text, mut color)) = q.single_mut() else { return };
     if run.chrono_active {
         let bet = run.bet.map(|s| s.label()).unwrap_or("");
-        text.0 = format!("⏱ {:.1}s / {:.1}s  ({bet})", run.chrono_elapsed, run.chrono_target);
+        text.0 = format!("{:.1}s / {:.1}s  ({bet})", run.chrono_elapsed, run.chrono_target);
         color.0 = if run.chrono_elapsed <= run.chrono_target {
             Color::srgb(0.5, 1.0, 0.5)
         } else {
@@ -678,7 +678,7 @@ fn pause_system(
             });
 
             p.spawn((
-                Text::new("Échap : reprendre        Q : quitter au cabanon"),
+                Text::new("Échap : reprendre        A : quitter au cabanon"),
                 TextFont { font_size: 15.0, ..default() },
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
             ));

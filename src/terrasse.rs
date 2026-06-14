@@ -75,11 +75,15 @@ fn enter_terrasse(
         *stats = RunStats::default();
     }
 
-    // Dalles de la terrasse.
+    // Sol de la terrasse (texture dédiée).
     let tile = Color::srgb(0.45, 0.42, 0.4);
     commands.spawn((
         DespawnOnExit(AppState::Terrasse),
-        Sprite::from_color(tile, arena.half * 2.0 + Vec2::splat(8.0)),
+        Sprite {
+            image: sprites.zones.terrasse.clone(),
+            custom_size: Some(arena.half * 2.0 + Vec2::splat(8.0)),
+            ..default()
+        },
         Transform::from_xyz(0.0, 0.0, -10.0),
     ));
     let mut rng = rand::rng();

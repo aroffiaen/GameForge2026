@@ -8,7 +8,6 @@
 //!                langue en ligne, crachats toxiques.
 //! - Terre Sèche: Roger le Scorpion — charges de pinces, salves de dard venimeux.
 //! - Potager    : Méga-Limace — reptation baveuse, crachat radial, ponte.
-//! - Dalles     : Araignée géante — même répertoire que Mémé Mygale, gros PV.
 
 use bevy::prelude::*;
 use rand::prelude::*;
@@ -25,8 +24,6 @@ pub enum BossKind {
     MegaLimace,
     /// Boss du Gravier (GDD §7) : corps segmenté, ruée en ligne.
     MillePattes,
-    /// Boss des Dalles (GDD §7) : réutilise l'IA Araignée, gros PV (§19).
-    AraigneeGeante,
 }
 
 impl BossKind {
@@ -37,7 +34,6 @@ impl BossKind {
             BossKind::Gromp => "Grompaud",
             BossKind::MegaLimace => "Méga-Limace",
             BossKind::MillePattes => "Mille-Pattes",
-            BossKind::AraigneeGeante => "Araignée géante",
         }
     }
 }
@@ -57,7 +53,6 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         BossKind::Gromp => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
         BossKind::MegaLimace => (430.0, 34.0, Color::srgb(0.8, 0.85, 0.3), 11.0),
         BossKind::MillePattes => (460.0, 20.0, Color::srgb(0.62, 0.34, 0.20), 13.0),
-        BossKind::AraigneeGeante => (900.0, 40.0, Color::srgb(0.20, 0.18, 0.26), 16.0),
     };
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
     // La limace a une silhouette allongée ; les autres sont ~circulaires.
@@ -138,16 +133,6 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
                         Transform::from_xyz(-seg_spacing * k, 0.0, -0.05 * k),
                     ));
                 }
-            });
-        }
-        BossKind::AraigneeGeante => {
-            // Réutilise l'IA Araignée (placeholder assumé, GDD §19) ; ses gros
-            // PV / sa taille (ci-dessus) en font la version « géante ».
-            e.insert(Araignee {
-                state: AraigneeState::Chase,
-                timer: Timer::from_seconds(1.6, TimerMode::Once),
-                leap_from: pos,
-                leap_to: pos,
             });
         }
     }
