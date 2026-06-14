@@ -331,11 +331,7 @@ fn update_center(
         AppState::Terrasse => format!("TERRASSE — {:.1} s — {} kills", terrasse.time, stats.kills),
         AppState::EnRun => {
             let room = match run.room_kind {
-                RoomKind::Boss => match run.gauntlet {
-                    Some(4) => "BOSS".to_string(),
-                    Some(w) => format!("vague {}/3", w),
-                    None => "boss".to_string(),
-                },
+                RoomKind::Boss => "BOSS".to_string(),
                 RoomKind::Elite => "élite".to_string(),
                 RoomKind::Combat => format!("salle {}/{}", run.room_index + 1, run.rooms_in_biome),
             };

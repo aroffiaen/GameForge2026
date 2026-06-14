@@ -259,18 +259,18 @@ Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash,
 - [ ] Le reproposer en **augment « Élan »** : ×0.8 immobile → ×1.5 vitesse max.
 
 ### D. Refonte ennemis
-- [ ] Nouveau roster **6 mobs** (Fourmi, Escargot / Araignée, Criquet / Guêpe, Cigale).
-- [ ] **Supprimer les dégâts de collision.**
-- [ ] Attaques par archétype : chase = **mêlée télégraphée**, lunge = **dégâts pendant la ruée**, range = **boule rouge**.
-- [ ] **Nombre d'ennemis fixe** par salle ; **types aléatoires** (pool du biome).
-- [ ] **Scaling linéaire** + modulation selon réussite/échec de la salle précédente.
-- [ ] **Élites** : mob random agrandi + 1 stat boostée ; porte marquée d'un **losange violet**.
+- [x] Nouveau roster **6 mobs** (Fourmi, Escargot / Araignée, Criquet / Guêpe, Cigale).
+- [x] **Supprimer les dégâts de collision.** *(mobs ; le boss garde les siens)*
+- [x] Attaques par archétype : chase = **mêlée télégraphée**, lunge = **dégâts pendant la ruée**, range = **boule rouge**.
+- [x] **Nombre d'ennemis fixe** par salle ; **types aléatoires** (pool du biome).
+- [x] **Scaling linéaire** + modulation selon réussite/échec de la salle précédente *(via `momentum`)*.
+- [x] **Élites** : mob random agrandi + 1 stat boostée ; porte marquée d'un **losange violet**.
 
 ### E. Structure de run
-- [ ] **5 biomes / run** (tirés parmi 6, sans répétition), **5 salles + 1 boss** chacun (25 salles).
-- [ ] **Supprimer le gauntlet de vagues** au boss (salle de boss = juste le boss).
-- [ ] Après boss : **augment (3→1)** puis **3 portes-stat**, puis **biome aléatoire** non encore vu.
-- [ ] Retirer l'écran de **choix de biome**.
+- [x] **5 biomes / run** (tirés parmi 6, sans répétition), **5 salles + 1 boss** chacun (25 salles). *(La run démarre toujours au Jardin, puis 4 biomes aléatoires non vus — choix de design, pour la courbe de difficulté.)*
+- [x] **Supprimer le gauntlet de vagues** au boss (salle de boss = juste le boss).
+- [x] Après boss : **augment (3→1)** puis **3 portes-stat**, puis **biome aléatoire** non encore vu.
+- [x] Retirer l'écran de **choix de biome** (la transition se fait via les portes-stat post-boss).
 
 ### F. Armes
 - [ ] **Retrait global du knockback** (toutes armes).
@@ -279,9 +279,9 @@ Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash,
 - [ ] **Dual wield** : 2 armes différentes, pas de doublon.
 
 ### G. Biomes / contenu
-- [ ] **6 biomes** : Jardin, Gravier, Boue, Terre Sèche, Potager, Dalles (+ Terrasse finale).
-- [ ] Bosses : Araignée, Mille-Pattes, Grompaud, Scorpion, Méga-Limace, Araignée géante.
-- [ ] Adapter palettes / bestiaires par biome.
+- [x] **6 biomes** : Jardin, Gravier, Boue, Terre Sèche, Potager, Dalles (+ Terrasse finale).
+- [x] Bosses : Araignée, **Mille-Pattes** *(neuf : corps segmenté, ruée en ligne, salve, bave)*, Grompaud, Scorpion, Méga-Limace, **Araignée géante** *(réutilise l'IA Araignée, gros PV — placeholder §19)*.
+- [x] Adapter palettes / bestiaires par biome.
 
 ### H. Nettoyage
 - [ ] **Supprimer salles trésor & secrètes.**

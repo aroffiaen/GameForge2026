@@ -30,14 +30,12 @@ impl Default for TerrasseState {
 }
 
 const ALL_KINDS: &[EnemyKind] = &[
-    EnemyKind::Puceron,
     EnemyKind::Fourmi,
-    EnemyKind::Araignee,
-    EnemyKind::Moustique,
-    EnemyKind::Guepe,
-    EnemyKind::Scarabee,
     EnemyKind::Escargot,
-    EnemyKind::Limace,
+    EnemyKind::Araignee,
+    EnemyKind::Criquet,
+    EnemyKind::Guepe,
+    EnemyKind::Cigale,
 ];
 
 pub struct TerrassePlugin;
@@ -136,7 +134,7 @@ fn terrasse_spawner(
     if terrasse.spawn_timer.just_finished() {
         let count = (1 + (terrasse.time / 25.0) as u32).min(4);
         for _ in 0..count {
-            let kind = *ALL_KINDS.choose(&mut rng).unwrap_or(&EnemyKind::Puceron);
+            let kind = *ALL_KINDS.choose(&mut rng).unwrap_or(&EnemyKind::Fourmi);
             // Apparition sur les bords.
             let side = rng.random_range(0..4);
             let pos = match side {
@@ -153,7 +151,7 @@ fn terrasse_spawner(
     // Un boss surprise de temps en temps, parce que la terrasse est cruelle.
     if terrasse.time >= terrasse.next_boss_at {
         terrasse.next_boss_at += 75.0;
-        let biome = *ALL_BIOMES.choose(&mut rng).unwrap_or(&crate::biomes::Biome::Plaine);
+        let biome = *ALL_BIOMES.choose(&mut rng).unwrap_or(&crate::biomes::Biome::Jardin);
         let boss = biome.boss();
         spawn_boss(
             &mut commands,

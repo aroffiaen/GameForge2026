@@ -29,3 +29,4 @@ Cargo.lock
 
 # Claude
 .claude/
+CLAUDE.md

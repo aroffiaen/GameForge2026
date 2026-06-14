@@ -41,8 +41,6 @@ pub enum RunPhase {
     DoorOpen,
     /// Choix d'augment (3 → 1, GDD §5.1).
     Augment,
-    /// Choix du biome suivant (2 options, GDD §6.5).
-    BiomeChoice,
 }
 
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,7 +126,9 @@ pub struct Enemy;
 #[derive(Component)]
 pub struct BossTag;
 
-/// Dégâts de contact infligés au joueur.
+/// Dégâts de contact infligés au joueur. Refonte v0.3 (§18.D) : les **mobs**
+/// n'en infligent plus (ils ont une attaque par archétype) ; seul le **boss**
+/// garde des dégâts de contact, en plus de ses patterns.
 #[derive(Component)]
 pub struct ContactDmg(pub f32);
 
@@ -555,7 +555,8 @@ fn contact_damage(
     mut dmg: MessageWriter<DamageMsg>,
     mut enemies: Query<
         (&Transform, &Radius, &ContactDmg, &mut ContactCd, Has<Untouchable>),
-        With<Enemy>,
+        // Seul le boss inflige encore des dégâts de contact (GDD §18.D).
+        (With<Enemy>, With<BossTag>),
     >,
     mut player: Query<
         (Entity, &Transform, &Radius, &mut Knockback, &mut crate::player::Iframes),

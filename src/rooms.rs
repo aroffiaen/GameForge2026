@@ -19,21 +19,32 @@ pub enum RoomKind {
     Boss,
 }
 
+/// Salles intermédiaires par biome avant le boss (GDD §6 : 5 salles + 1 boss).
+const ROOMS_PER_BIOME: u32 = 5;
+
 /// L'état de la run en cours.
 #[derive(Resource)]
 pub struct RunState {
     pub biome: Biome,
     /// 0..5 — une run traverse 5 biomes (GDD §6.1).
     pub biome_index: u32,
+    /// Biomes déjà visités dans la run (pour le tirage sans répétition, §6).
+    pub seen: Vec<Biome>,
     /// Salles intermédiaires déjà jouées dans ce biome.
     pub room_index: u32,
-    /// Nombre de salles intermédiaires de ce biome (1 à 3).
+    /// Nombre de salles intermédiaires de ce biome (fixe = 5, GDD §6).
     pub rooms_in_biome: u32,
     pub room_kind: RoomKind,
-    /// Vague du gauntlet de boss : 1-3 = vagues, 4 = boss en jeu.
-    pub gauntlet: Option<u8>,
+    /// Type de la salle vers laquelle mènent les portes en cours (pré-décidé à
+    /// l'ouverture des portes pour pouvoir signaler une élite — losange violet).
+    pub next_room_kind: RoomKind,
+    /// Les portes ouvertes mènent-elles au biome suivant ? (portes-stat post-boss)
+    pub awaiting_biome: bool,
     /// La terrasse a-t-elle été atteinte par une vraie run ?
     pub came_from_run: bool,
+    /// Modulation du peuplement selon réussite/échec des salles chrono (GDD §6) :
+    /// les réussites enchaînées font monter la difficulté, les échecs la baissent.
+    pub momentum: i32,
     // --- Stats-Up chronométré (GDD §3.1, refonte v0.3 partie B) ---
     /// Stat misée à la porte précédente, transmise à la prochaine salle.
     pub pending_bet: Option<Stat>,
@@ -49,13 +60,16 @@ pub struct RunState {
 impl Default for RunState {
     fn default() -> Self {
         Self {
-            biome: Biome::Plaine,
+            biome: Biome::Jardin,
             biome_index: 0,
+            seen: Vec::new(),
             room_index: 0,
-            rooms_in_biome: 2,
+            rooms_in_biome: ROOMS_PER_BIOME,
             room_kind: RoomKind::Combat,
-            gauntlet: None,
+            next_room_kind: RoomKind::Combat,
+            awaiting_biome: false,
             came_from_run: false,
+            momentum: 0,
             pending_bet: None,
             bet: None,
             chrono_active: false,
@@ -113,11 +127,6 @@ impl Plugin for RoomsPlugin {
             .add_systems(
                 Update,
                 door_interact.run_if(in_state(RunPhase::DoorOpen)),
-            )
-            .add_systems(OnEnter(RunPhase::BiomeChoice), open_biome_ui)
-            .add_systems(
-                Update,
-                pick_biome.run_if(in_state(RunPhase::BiomeChoice)),
             );
     }
 }
@@ -137,7 +146,6 @@ fn start_run(
     mut arena: ResMut<Arena>,
     mut build: MessageWriter<BuildRoom>,
 ) {
-    let mut rng = rand::rng();
     *stats = RunStats::default();
     statup.reset(); // chaque run repart à 100 % sur les 7 stats (GDD §3.3)
     augments.0.clear();
@@ -145,13 +153,15 @@ fn start_run(
     meta.runs += 1;
     crate::meta::save_meta(&meta);
 
+    // La run démarre toujours au Jardin (boss d'intro) ; les 4 biomes suivants
+    // sont tirés au hasard parmi les 5 restants, sans répétition (GDD §6).
     *run = RunState {
-        biome: Biome::Plaine,
+        biome: Biome::Jardin,
         biome_index: 0,
+        seen: vec![Biome::Jardin],
         room_index: 0,
-        rooms_in_biome: rng.random_range(1..=3),
+        rooms_in_biome: ROOMS_PER_BIOME,
         room_kind: RoomKind::Combat,
-        gauntlet: None,
         came_from_run: false,
         ..default()
     };
@@ -255,11 +265,13 @@ fn build_room(
     let dmg_scale = run.dmg_scale();
     match run.room_kind {
         RoomKind::Combat => {
-            run.gauntlet = None;
-            let depth = run.biome_index;
-            let n_small = rng.random_range(4..=6) + depth;
-            let n_med = rng.random_range(1..=2) + depth / 2;
-            let n_big = if depth >= 2 { rng.random_range(0..=1) } else { 0 };
+            // Nombre d'ennemis FIXE par salle (profondeur + modulation
+            // réussite/échec) ; seuls les TYPES restent aléatoires (GDD §6).
+            let depth = run.biome_index as i32;
+            let m = run.momentum;
+            let n_small = (5 + depth + m).clamp(3, 14) as u32;
+            let n_med = (1 + depth / 2 + m.max(0)).clamp(0, 8) as u32;
+            let n_big: u32 = if depth >= 2 { 1 } else { 0 };
             spawn_tier(&mut commands, &mut rng, biome, 0, n_small, hp_scale, dmg_scale, &arena);
             spawn_tier(&mut commands, &mut rng, biome, 1, n_med, hp_scale, dmg_scale, &arena);
             spawn_tier(&mut commands, &mut rng, biome, 2, n_big, hp_scale, dmg_scale, &arena);
@@ -273,7 +285,6 @@ fn build_room(
             next_phase.set(RunPhase::Fighting);
         }
         RoomKind::Elite => {
-            run.gauntlet = None;
             let kinds = biome.tier(1);
             let kind = *kinds.choose(&mut rng).unwrap_or(&EnemyKind::Araignee);
             spawn_enemy(
@@ -290,12 +301,18 @@ fn build_room(
             next_phase.set(RunPhase::Fighting);
         }
         RoomKind::Boss => {
-            run.gauntlet = Some(1);
+            // Salle de boss = juste le boss (plus de gauntlet de vagues, GDD §6).
             setup_room_chrono(&mut run, 0, false); // jamais de chrono au boss
-            let n = 7 + run.biome_index;
-            spawn_tier(&mut commands, &mut rng, biome, 0, n, hp_scale, dmg_scale, &arena);
+            let boss = biome.boss();
+            crate::boss::spawn_boss(
+                &mut commands,
+                boss,
+                Vec2::new(0.0, arena.half.y * 0.5),
+                hp_scale,
+            );
             toasts.write(ToastMsg(format!(
-                "ANTRE DU BOSS — vague 1/3 ({})",
+                "ANTRE DU BOSS — {} ({})",
+                boss.name(),
                 biome.name()
             )));
             next_phase.set(RunPhase::Fighting);
@@ -317,7 +334,7 @@ fn spawn_tier(
     let kinds = biome.tier(tier);
     let player_spawn = Vec2::new(0.0, -arena.half.y + 70.0);
     for _ in 0..count {
-        let kind = *kinds.choose(rng).unwrap_or(&EnemyKind::Puceron);
+        let kind = *kinds.choose(rng).unwrap_or(&EnemyKind::Fourmi);
         // On apparaît loin du joueur.
         let mut pos = Vec2::ZERO;
         for _ in 0..12 {
@@ -369,6 +386,8 @@ fn resolve_chrono(run: &mut RunState, statup: &mut Stats, toasts: &mut MessageWr
     if elapsed <= target {
         let gain = 2.0 * (target - elapsed);
         statup.add(bet, gain);
+        // Réussite : la prochaine salle monte un peu (cap +3).
+        run.momentum = (run.momentum + 1).min(3);
         toasts.write(ToastMsg(format!(
             "⏱ {elapsed:.1}s ≤ {target:.1}s — {} +{gain:.0}%",
             bet.label()
@@ -376,6 +395,8 @@ fn resolve_chrono(run: &mut RunState, statup: &mut Stats, toasts: &mut MessageWr
     } else {
         let loss = (elapsed - target).min(15.0);
         statup.add(bet, -loss);
+        // Échec : on relâche un peu la pression (cap −2).
+        run.momentum = (run.momentum - 1).max(-2);
         toasts.write(ToastMsg(format!(
             "⏱ {elapsed:.1}s > {target:.1}s — {} −{loss:.0}%",
             bet.label()
@@ -397,9 +418,7 @@ fn tick_chrono(time: Res<Time>, phase: Res<State<RunPhase>>, mut run: ResMut<Run
 fn check_room_clear(
     state: Res<State<AppState>>,
     phase: Res<State<RunPhase>>,
-    mut commands: Commands,
     mut run: ResMut<RunState>,
-    arena: Res<Arena>,
     mut stats: ResMut<RunStats>,
     mut statup: ResMut<Stats>,
     augments: Res<Augments>,
@@ -415,52 +434,19 @@ fn check_room_clear(
     if !enemies.is_empty() {
         return;
     }
-    let mut rng = rand::rng();
 
     match run.room_kind {
         RoomKind::Boss => {
-            let wave = run.gauntlet.unwrap_or(1);
-            let biome = run.biome;
-            let hp_scale = run.hp_scale();
-            let dmg_scale = run.dmg_scale();
-            match wave {
-                1 => {
-                    run.gauntlet = Some(2);
-                    let n = 4 + run.biome_index / 2;
-                    spawn_tier(&mut commands, &mut rng, biome, 1, n, hp_scale, dmg_scale, &arena);
-                    toasts.write(ToastMsg("Vague 2/3 — ça grossit…".into()));
+            // La salle de boss ne contenait que le boss : vide ⇒ boss vaincu.
+            stats.bosses += 1;
+            if augments.has(Augment::Rosee) {
+                if let Ok(mut health) = player.single_mut() {
+                    health.hp = (health.hp + 12.0).min(health.max);
                 }
-                2 => {
-                    run.gauntlet = Some(3);
-                    let n = 2 + run.biome_index / 2;
-                    spawn_tier(&mut commands, &mut rng, biome, 2, n, hp_scale, dmg_scale, &arena);
-                    toasts.write(ToastMsg("Vague 3/3 — les gros calibres.".into()));
-                }
-                3 => {
-                    run.gauntlet = Some(4);
-                    let boss = biome.boss();
-                    crate::boss::spawn_boss(
-                        &mut commands,
-                        boss,
-                        Vec2::new(0.0, arena.half.y * 0.5),
-                        hp_scale,
-                    );
-                    toasts.write(ToastMsg(format!("{} entre en scène !", boss.name())));
-                }
-                _ => {
-                    // Boss vaincu !
-                    stats.bosses += 1;
-                    run.gauntlet = None;
-                    if augments.has(Augment::Rosee) {
-                        if let Ok(mut health) = player.single_mut() {
-                            health.hp = (health.hp + 12.0).min(health.max);
-                        }
-                        toasts.write(ToastMsg("Rosée du matin : +12 PV.".into()));
-                    }
-                    *after = AfterAugment::PostBoss;
-                    next_phase.set(RunPhase::Augment);
-                }
+                toasts.write(ToastMsg("Rosée du matin : +12 PV.".into()));
             }
+            *after = AfterAugment::PostBoss;
+            next_phase.set(RunPhase::Augment);
         }
         RoomKind::Elite => {
             // La salle d'élite était chronométrée (permissive) : on résout la mise.
@@ -485,24 +471,40 @@ fn check_room_clear(
 fn spawn_door(
     state: Res<State<AppState>>,
     arena: Res<Arena>,
-    run: Res<RunState>,
+    mut run: ResMut<RunState>,
     mut commands: Commands,
     doors: Query<(), With<Door>>,
 ) {
     if *state.get() != AppState::EnRun || !doors.is_empty() {
         return;
     }
-    // Juste avant le boss : porte simple (pas de mise). Sinon : 3 portes-stat.
-    if run.room_index + 1 >= run.rooms_in_biome {
+    if run.awaiting_biome {
+        // Portes-stat post-boss : elles mènent au biome suivant (pas d'élite ici).
+        run.next_room_kind = RoomKind::Combat;
+        spawn_stat_doors(&mut commands, &arena, false);
+    } else if run.room_index + 1 >= run.rooms_in_biome {
+        // Juste avant le boss : porte simple (pas de mise).
+        run.next_room_kind = RoomKind::Boss;
         spawn_door_inner(&mut commands, &arena);
     } else {
-        spawn_stat_doors(&mut commands, &arena);
+        // On pré-décide le type de la prochaine salle pour pouvoir la signaler :
+        // une élite est annoncée par un losange violet au-dessus des portes.
+        let mut rng = rand::rng();
+        run.next_room_kind = if rng.random_bool(0.2) {
+            RoomKind::Elite
+        } else {
+            RoomKind::Combat
+        };
+        let elite = run.next_room_kind == RoomKind::Elite;
+        spawn_stat_doors(&mut commands, &arena, elite);
     }
 }
 
 /// Les 3 portes-stat (GDD §3.1) : 3 stats distinctes tirées au hasard, une par
 /// porte. Passer par une porte = miser cette stat (la salle d'après est chrono).
-fn spawn_stat_doors(commands: &mut Commands, arena: &Arena) {
+/// Si la salle au-delà est une **élite**, chaque porte est coiffée d'un
+/// **losange violet** (GDD §6).
+fn spawn_stat_doors(commands: &mut Commands, arena: &Arena, elite: bool) {
     let mut rng = rand::rng();
     let mut pool = Stat::ALL.to_vec();
     pool.shuffle(&mut rng);
@@ -529,6 +531,14 @@ fn spawn_stat_doors(commands: &mut Commands, arena: &Arena) {
                     TextColor(Color::srgb(0.9, 0.85, 0.6)),
                     Transform::from_xyz(0.0, -20.0, 1.0),
                 ));
+                if elite {
+                    // Losange violet (carré tourné de 45°) : salle d'élite au-delà.
+                    p.spawn((
+                        Sprite::from_color(Color::srgb(0.62, 0.2, 0.9), Vec2::splat(13.0)),
+                        Transform::from_xyz(0.0, 38.0, 1.0)
+                            .with_rotation(Quat::from_rotation_z(std::f32::consts::FRAC_PI_4)),
+                    ));
+                }
             });
     }
 }
@@ -604,105 +614,43 @@ fn door_interact(
     let Some(bet) = chosen else { return };
     run.pending_bet = bet;
 
-    let mut rng = rand::rng();
-    run.room_index += 1;
-    if run.room_index >= run.rooms_in_biome {
-        run.room_kind = RoomKind::Boss;
-    } else {
-        // Combat majoritaire, parfois élite. Les salles trésor sont retirées :
-        // le système de portes-stat remplace ces respirations (GDD §6).
-        run.room_kind = if rng.random_bool(0.8) {
-            RoomKind::Combat
-        } else {
-            RoomKind::Elite
-        };
+    if run.awaiting_biome {
+        // Transition post-boss vers le biome suivant : aléatoire parmi ceux pas
+        // encore vus dans la run (GDD §6). La 1re salle du nouveau biome est
+        // chrono (on vient de miser via la porte).
+        run.awaiting_biome = false;
+        let next = next_unseen_biome(&run);
+        run.biome = next;
+        run.seen.push(next);
+        run.biome_index += 1;
+        run.room_index = 0;
+        run.rooms_in_biome = ROOMS_PER_BIOME;
+        run.room_kind = RoomKind::Combat;
+        build.write(BuildRoom);
+        return;
     }
-    build.write(BuildRoom);
-}
 
-// ---------------------------------------------------------------------------
-// Choix du biome suivant (GDD §6.5)
-// ---------------------------------------------------------------------------
-
-fn open_biome_ui(mut commands: Commands, run: Res<RunState>) {
-    let choices = run.biome.next_choices();
-    commands
-        .spawn((
-            DespawnOnExit(RunPhase::BiomeChoice),
-            Node {
-                position_type: PositionType::Absolute,
-                width: Val::Percent(100.0),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                row_gap: Val::Px(14.0),
-                ..default()
-            },
-            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.72)),
-            GlobalZIndex(20),
-        ))
-        .with_children(|parent| {
-            parent.spawn((
-                Text::new(format!(
-                    "— BIOME {}/5 TERMINÉ — Où va-t-on ?",
-                    run.biome_index + 1
-                )),
-                TextFont { font_size: 26.0, ..default() },
-                TextColor(Color::srgb(0.95, 0.9, 0.6)),
-            ));
-            for (i, biome) in choices.iter().enumerate() {
-                parent
-                    .spawn((
-                        Node {
-                            flex_direction: FlexDirection::Column,
-                            padding: UiRect::all(Val::Px(12.0)),
-                            width: Val::Px(440.0),
-                            row_gap: Val::Px(4.0),
-                            ..default()
-                        },
-                        BackgroundColor(Color::srgba(0.1, 0.15, 0.2, 0.95)),
-                    ))
-                    .with_children(|card| {
-                        card.spawn((
-                            Text::new(format!("[{}]  {}", i + 1, biome.name())),
-                            TextFont { font_size: 20.0, ..default() },
-                            TextColor(Color::srgb(0.6, 0.9, 1.0)),
-                        ));
-                        card.spawn((
-                            Text::new(biome.desc()),
-                            TextFont { font_size: 15.0, ..default() },
-                            TextColor(Color::srgb(0.85, 0.85, 0.8)),
-                        ));
-                    });
-            }
-            parent.spawn((
-                Text::new("Choisis avec 1 ou 2"),
-                TextFont { font_size: 14.0, ..default() },
-                TextColor(Color::srgb(0.6, 0.6, 0.6)),
-            ));
-        });
-}
-
-fn pick_biome(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut run: ResMut<RunState>,
-    mut build: MessageWriter<BuildRoom>,
-) {
-    let choices = run.biome.next_choices();
-    let picked = if keys.just_pressed(KeyCode::Digit1) {
-        Some(choices[0])
-    } else if keys.just_pressed(KeyCode::Digit2) {
-        Some(choices[1])
+    run.room_index += 1;
+    // Le type de la prochaine salle a déjà été pré-décidé (et signalé) à
+    // l'ouverture des portes : on ne fait que l'appliquer ici (GDD §6).
+    run.room_kind = if run.room_index >= run.rooms_in_biome {
+        RoomKind::Boss
     } else {
-        None
+        run.next_room_kind
     };
-    let Some(biome) = picked else { return };
-    let mut rng = rand::rng();
-    run.biome = biome;
-    run.biome_index += 1;
-    run.room_index = 0;
-    run.rooms_in_biome = rng.random_range(1..=3);
-    run.room_kind = RoomKind::Combat;
     build.write(BuildRoom);
+}
+
+/// Tire un biome pas encore vu dans la run (5 parmi 6, sans répétition, §6).
+/// Repli sur le biome courant — ne devrait pas arriver, la Terrasse prend le
+/// relais après le 5e boss.
+fn next_unseen_biome(run: &RunState) -> Biome {
+    let mut rng = rand::rng();
+    let mut pool: Vec<Biome> = crate::biomes::ALL_BIOMES
+        .iter()
+        .copied()
+        .filter(|b| !run.seen.contains(b))
+        .collect();
+    pool.shuffle(&mut rng);
+    pool.first().copied().unwrap_or(run.biome)
 }

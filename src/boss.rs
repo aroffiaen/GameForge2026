@@ -1,10 +1,14 @@
 //! Les boss : prédateurs du jardin, un par biome, avec patterns propres
-//! (GDD §8.2). Chacun arrive après un gauntlet de 3 vagues (GDD §6.3).
+//! (GDD §7-8). Chacun arrive après un gauntlet de 3 vagues (GDD §6.3).
 //!
-//! - Plaine  : Mémé Mygale (araignée) — bonds, jet de toile, araignéeaux.
-//! - Savane  : Roger le Scorpion — charges de pinces, salves de dard venimeux.
-//! - Jungle  : Grompaud (crapaud, clin d'œil au Gromp de LoL) — bonds AoE,
-//!             langue en ligne, crachats toxiques.
+//! - Jardin     : Mémé Mygale (araignée) — bonds, jet de toile, araignéeaux.
+//! - Gravier    : Mille-Pattes — ruée en ligne (corps dangereux), salve en
+//!                éventail, traînée de bave toxique.
+//! - Boue       : Grompaud (crapaud, clin d'œil au Gromp de LoL) — bonds AoE,
+//!                langue en ligne, crachats toxiques.
+//! - Terre Sèche: Roger le Scorpion — charges de pinces, salves de dard venimeux.
+//! - Potager    : Méga-Limace — reptation baveuse, crachat radial, ponte.
+//! - Dalles     : Araignée géante — même répertoire que Mémé Mygale, gros PV.
 
 use bevy::prelude::*;
 use rand::prelude::*;
@@ -19,6 +23,10 @@ pub enum BossKind {
     Gromp,
     /// Boss du Potager (GDD §7). Porté de feat/player (« Giga Limace »).
     MegaLimace,
+    /// Boss du Gravier (GDD §7) : corps segmenté, ruée en ligne.
+    MillePattes,
+    /// Boss des Dalles (GDD §7) : réutilise l'IA Araignée, gros PV (§19).
+    AraigneeGeante,
 }
 
 impl BossKind {
@@ -28,6 +36,8 @@ impl BossKind {
             BossKind::Scorpion => "Roger le Scorpion",
             BossKind::Gromp => "Grompaud",
             BossKind::MegaLimace => "Méga-Limace",
+            BossKind::MillePattes => "Mille-Pattes",
+            BossKind::AraigneeGeante => "Araignée géante",
         }
     }
 }
@@ -46,6 +56,8 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         BossKind::Scorpion => (360.0, 24.0, Color::srgb(0.65, 0.45, 0.2), 15.0),
         BossKind::Gromp => (470.0, 30.0, Color::srgb(0.35, 0.55, 0.3), 15.0),
         BossKind::MegaLimace => (430.0, 34.0, Color::srgb(0.8, 0.85, 0.3), 11.0),
+        BossKind::MillePattes => (460.0, 20.0, Color::srgb(0.62, 0.34, 0.20), 13.0),
+        BossKind::AraigneeGeante => (900.0, 40.0, Color::srgb(0.20, 0.18, 0.26), 16.0),
     };
     let color = color.mix(&Color::srgb(0.8, 0.1, 0.1), 0.15);
     // La limace a une silhouette allongée ; les autres sont ~circulaires.
@@ -67,7 +79,7 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         ContactCd(Timer::from_seconds(0.4, TimerMode::Once)),
         PattesDrop(20),
         AiSpeed(80.0),
-        crate::enemies::EnemyKind::Scarabee, // type « gros » par défaut pour les systèmes génériques
+        crate::enemies::EnemyKind::Escargot, // type « gros » par défaut pour les systèmes génériques
     ));
     match kind {
         BossKind::Araignee => {
@@ -99,6 +111,43 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
                 state: LimaceState::Crawl,
                 timer: Timer::from_seconds(1.5, TimerMode::Once),
                 trail: Timer::from_seconds(0.45, TimerMode::Repeating),
+            });
+        }
+        BossKind::MillePattes => {
+            let seg_count = 7usize;
+            let seg_spacing = radius * 1.35;
+            e.insert(MillePattes {
+                state: MpState::Crawl,
+                timer: Timer::from_seconds(2.2, TimerMode::Once),
+                charge_dir: Vec2::X,
+                heading: 0.0,
+                trail_drop: Timer::from_seconds(0.45, TimerMode::Repeating),
+                volley_left: 0,
+                seg_count,
+                seg_spacing,
+            });
+            // Corps : segments décroissants greffés derrière la tête (axe -X
+            // local) ; ils suivent la rotation de la tête et se despawn avec elle.
+            let seg_color = color.mix(&Color::BLACK, 0.15);
+            e.with_children(|p| {
+                for i in 0..seg_count {
+                    let k = i as f32 + 1.0;
+                    let r = radius * (1.0 - 0.06 * k).max(0.45);
+                    p.spawn((
+                        Sprite::from_color(seg_color, Vec2::splat(r * 2.0)),
+                        Transform::from_xyz(-seg_spacing * k, 0.0, -0.05 * k),
+                    ));
+                }
+            });
+        }
+        BossKind::AraigneeGeante => {
+            // Réutilise l'IA Araignée (placeholder assumé, GDD §19) ; ses gros
+            // PV / sa taille (ci-dessus) en font la version « géante ».
+            e.insert(Araignee {
+                state: AraigneeState::Chase,
+                timer: Timer::from_seconds(1.6, TimerMode::Once),
+                leap_from: pos,
+                leap_to: pos,
             });
         }
     }
@@ -640,19 +689,185 @@ fn mega_limace_ai(
             LimaceState::Summon => {
                 vel.0 = Vec2::ZERO;
                 if slug.timer.is_finished() {
-                    // Ponte de 2 limaces (les rejetons de la matriarche).
+                    // Ponte de 2 rejetons (petits escargots baveux, allégés
+                    // pour rester au niveau des anciennes limaces invoquées).
                     for _ in 0..2 {
                         let off = Vec2::new(
                             rng.random_range(-45.0..45.0),
                             rng.random_range(-45.0..45.0),
                         );
-                        spawn_enemy(&mut commands, EnemyKind::Limace, pos + off, 1.0, 1.0, false);
+                        spawn_enemy(&mut commands, EnemyKind::Escargot, pos + off, 0.45, 0.8, false);
                     }
                     slug.state = LimaceState::Crawl;
                     slug.timer = Timer::from_seconds(1.6, TimerMode::Once);
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mille-Pattes (Gravier) : corps segmenté qui suit la tête. 3 patterns —
+// ruée en ligne (le corps blesse), salve en éventail, traînée de bave toxique.
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq)]
+enum MpState {
+    /// Reptation vers le joueur ; dépose une traînée de bave.
+    Crawl,
+    /// Se cabre avant la ruée (tell rouge, immobile).
+    ChargeTelegraph,
+    /// Ruée en ligne : déplacement rapide, tête + corps dangereux.
+    Charge,
+    /// Salve de projectiles en éventail.
+    Volley,
+}
+
+#[derive(Component)]
+pub struct MillePattes {
+    state: MpState,
+    timer: Timer,
+    charge_dir: Vec2,
+    /// Angle de facing de la tête (oriente le corps segmenté).
+    heading: f32,
+    trail_drop: Timer,
+    volley_left: u32,
+    seg_count: usize,
+    seg_spacing: f32,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn mille_pattes_ai(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut dmg: MessageWriter<DamageMsg>,
+    mut player: Query<(Entity, &Transform, &Radius, &mut crate::player::Iframes), With<Player>>,
+    mut bosses: Query<
+        (&mut Transform, &mut Velocity, &mut Sprite, &BaseColor, &mut MillePattes),
+        Without<Player>,
+    >,
+) {
+    let Ok((player_e, player_tf, player_r, mut iframes)) = player.single_mut() else {
+        return;
+    };
+    let player_pos = player_tf.translation.truncate();
+    let dt = time.delta_secs();
+    let mut rng = rand::rng();
+
+    for (mut tf, mut vel, mut sprite, base, mut mp) in &mut bosses {
+        mp.timer.tick(time.delta());
+        mp.trail_drop.tick(time.delta());
+        let pos = tf.translation.truncate();
+        let dir = (player_pos - pos).normalize_or(Vec2::X);
+
+        match mp.state {
+            MpState::Crawl => {
+                vel.0 = vel.0.move_towards(dir * 95.0, 500.0 * dt);
+                sprite.color = base.0;
+                // Traînée de bave toxique laissée derrière la tête.
+                if mp.trail_drop.just_finished() {
+                    commands.spawn((
+                        Sprite::from_color(
+                            Color::srgb(0.5, 0.55, 0.2).with_alpha(0.4),
+                            Vec2::splat(46.0),
+                        ),
+                        Transform::from_translation(pos.extend(-3.0)),
+                        HazardPuddle {
+                            dps: 7.0,
+                            radius: 24.0,
+                            life: Timer::from_seconds(3.0, TimerMode::Once),
+                            tick: Timer::from_seconds(0.4, TimerMode::Repeating),
+                        },
+                    ));
+                }
+                if mp.timer.is_finished() {
+                    if rng.random_bool(0.6) {
+                        mp.state = MpState::ChargeTelegraph;
+                        mp.timer = Timer::from_seconds(0.55, TimerMode::Once);
+                        mp.charge_dir = dir;
+                    } else {
+                        mp.state = MpState::Volley;
+                        mp.timer = Timer::from_seconds(0.25, TimerMode::Once);
+                        mp.volley_left = 3;
+                    }
+                }
+            }
+            MpState::ChargeTelegraph => {
+                vel.0 = vel.0.move_towards(Vec2::ZERO, 1200.0 * dt);
+                sprite.color = base.0.mix(&Color::srgb(1.0, 0.15, 0.1), 0.6);
+                if mp.timer.is_finished() {
+                    sprite.color = base.0;
+                    mp.state = MpState::Charge;
+                    mp.timer = Timer::from_seconds(0.5, TimerMode::Once);
+                }
+            }
+            MpState::Charge => {
+                vel.0 = mp.charge_dir * 540.0;
+                // Le corps blesse pendant la ruée (la tête, elle, est gérée par
+                // le système de contact générique du boss).
+                if iframes.0.is_finished() {
+                    let mut hit = false;
+                    for i in 1..=mp.seg_count {
+                        let seg = pos - mp.charge_dir * (mp.seg_spacing * i as f32);
+                        if seg.distance(player_pos) <= 16.0 + player_r.0 {
+                            hit = true;
+                            break;
+                        }
+                    }
+                    if hit {
+                        dmg.write(DamageMsg {
+                            target: player_e,
+                            amount: 12.0,
+                            kind: DamageKind::Hit,
+                        });
+                        iframes.0 = Timer::from_seconds(0.5, TimerMode::Once);
+                    }
+                }
+                if mp.timer.is_finished() {
+                    mp.state = MpState::Crawl;
+                    mp.timer = Timer::from_seconds(1.6, TimerMode::Once);
+                }
+            }
+            MpState::Volley => {
+                vel.0 = vel.0.move_towards(Vec2::ZERO, 1000.0 * dt);
+                if mp.timer.is_finished() {
+                    mp.volley_left = mp.volley_left.saturating_sub(1);
+                    let base_angle = dir.to_angle();
+                    for spread in [-0.4, -0.2, 0.0, 0.2, 0.4] {
+                        let d = Vec2::from_angle(base_angle + spread);
+                        spawn_enemy_projectile(
+                            &mut commands,
+                            pos + d * 24.0,
+                            d * 300.0,
+                            8.0,
+                            Color::srgb(0.95, 0.16, 0.12),
+                        );
+                    }
+                    if mp.volley_left == 0 {
+                        mp.state = MpState::Crawl;
+                        mp.timer = Timer::from_seconds(1.4, TimerMode::Once);
+                    } else {
+                        mp.timer = Timer::from_seconds(0.3, TimerMode::Once);
+                    }
+                }
+            }
+        }
+
+        // Oriente la tête (et donc le corps segmenté greffé en enfant) selon le
+        // déplacement, ou la direction de ruée (snap immédiat).
+        let snap = matches!(mp.state, MpState::Charge | MpState::ChargeTelegraph);
+        let desired = if snap {
+            mp.charge_dir
+        } else if vel.0.length() > 10.0 {
+            vel.0.normalize()
+        } else {
+            Vec2::from_angle(mp.heading)
+        };
+        let blend = if snap { 1.0 } else { (dt * 8.0).min(1.0) };
+        let cur = Vec2::from_angle(mp.heading);
+        let nd = cur.lerp(desired, blend).normalize_or(desired);
+        mp.heading = nd.to_angle();
+        tf.rotation = Quat::from_rotation_z(mp.heading);
     }
 }
 
@@ -666,7 +881,14 @@ impl Plugin for BossPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (araignee_ai, scorpion_ai, gromp_ai, mega_limace_ai, glob_system)
+            (
+                araignee_ai,
+                scorpion_ai,
+                gromp_ai,
+                mega_limace_ai,
+                mille_pattes_ai,
+                glob_system,
+            )
                 .in_set(GameSet::Ai)
                 .run_if(combat_active),
         );

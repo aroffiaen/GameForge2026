@@ -317,7 +317,10 @@ fn advance(
                 next_phase.set(RunPhase::None);
                 next_state.set(AppState::Terrasse);
             } else {
-                next_phase.set(RunPhase::BiomeChoice);
+                // Après le boss : l'augment est pris, on ouvre 3 portes-stat qui
+                // mènent au biome suivant (aléatoire non vu, GDD §6).
+                run.awaiting_biome = true;
+                next_phase.set(RunPhase::DoorOpen);
             }
         }
     }
