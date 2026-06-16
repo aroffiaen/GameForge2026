@@ -74,6 +74,22 @@ struct ShopItem {
     blocked: Option<String>,
 }
 
+/// Ligne cliquable de la boutique (index dans `shop_items`).
+#[derive(Component, Clone, Copy)]
+struct ShopButton(usize);
+
+/// Ligne cliquable de l'établi (index dans la liste des armes débloquées +
+/// état équipé, pour restaurer la bonne couleur au survol).
+#[derive(Component, Clone, Copy)]
+struct LoadoutButton {
+    idx: usize,
+    equipped: bool,
+}
+
+const OV_BTN_NORMAL: Color = Color::srgba(0.14, 0.16, 0.22, 0.9);
+const OV_BTN_HOVER: Color = Color::srgba(0.24, 0.30, 0.42, 0.95);
+const OV_BTN_PRESS: Color = Color::srgba(0.32, 0.46, 0.62, 0.95);
+
 fn upgrade_info(u: Upgrade, meta: &MetaSave) -> (u8, &'static [u64], String) {
     match u {
         Upgrade::Hp => (meta.up_hp, &[40, 90, 160], "PV max +8".into()),
@@ -132,7 +148,14 @@ impl Plugin for CabanonPlugin {
             .add_systems(OnEnter(AppState::Cabanon), enter_cabanon)
             .add_systems(
                 Update,
-                (interact_system, refresh_overlay, overlay_input, update_hub_ui)
+                (
+                    interact_system,
+                    refresh_overlay,
+                    overlay_input,
+                    overlay_click,
+                    overlay_hover,
+                    update_hub_ui,
+                )
                     .run_if(in_state(AppState::Cabanon)),
             );
     }
@@ -493,17 +516,31 @@ fn build_shop_ui(commands: &mut Commands, meta: &MetaSave) {
                 } else {
                     (Color::srgb(0.8, 1.0, 0.7), String::new())
                 };
-                parent.spawn((
-                    Text::new(format!(
-                        "[{}]  {} — {} pattes{}",
-                        key_label(i),
-                        item.label,
-                        item.price,
-                        note
-                    )),
-                    TextFont { font_size: 17.0, ..default() },
-                    TextColor(color),
-                ));
+                parent
+                    .spawn((
+                        Button,
+                        ShopButton(i),
+                        Node {
+                            width: Val::Px(560.0),
+                            padding: UiRect::all(Val::Px(8.0)),
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        BackgroundColor(OV_BTN_NORMAL),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(format!(
+                                "[{}]  {} — {} pattes{}",
+                                key_label(i),
+                                item.label,
+                                item.price,
+                                note
+                            )),
+                            TextFont { font_size: 17.0, ..default() },
+                            TextColor(color),
+                        ));
+                    });
             }
             // Conditions des outils encore verrouillés.
             let locked: Vec<String> = ALL_WEAPONS
@@ -519,7 +556,7 @@ fn build_shop_ui(commands: &mut Commands, meta: &MetaSave) {
                 ));
             }
             parent.spawn((
-                Text::new("1-9 acheter · Échap fermer"),
+                Text::new("Clique un article (ou 1-9) · Échap fermer"),
                 TextFont { font_size: 13.0, ..default() },
                 TextColor(Color::srgb(0.5, 0.5, 0.5)),
             ));
@@ -576,14 +613,28 @@ fn build_loadout_ui(commands: &mut Commands, meta: &MetaSave, loadout: &Loadout)
                 } else {
                     Color::srgb(0.8, 0.8, 0.8)
                 };
-                parent.spawn((
-                    Text::new(format!("[{}] {} {} — {}", key_label(i), marker, d.name, d.desc)),
-                    TextFont { font_size: 16.0, ..default() },
-                    TextColor(color),
-                ));
+                parent
+                    .spawn((
+                        Button,
+                        LoadoutButton { idx: i, equipped },
+                        Node {
+                            width: Val::Px(620.0),
+                            padding: UiRect::all(Val::Px(8.0)),
+                            justify_content: JustifyContent::Center,
+                            ..default()
+                        },
+                        BackgroundColor(if equipped { OV_BTN_PRESS } else { OV_BTN_NORMAL }),
+                    ))
+                    .with_children(|b| {
+                        b.spawn((
+                            Text::new(format!("{} {} — {}", marker, d.name, d.desc)),
+                            TextFont { font_size: 16.0, ..default() },
+                            TextColor(color),
+                        ));
+                    });
             }
             parent.spawn((
-                Text::new("1-9 puis 0 : équiper/retirer · Échap fermer"),
+                Text::new("Clique une arme pour l'équiper/retirer (ou 1-9, 0) · Échap fermer"),
                 TextFont { font_size: 13.0, ..default() },
                 TextColor(Color::srgb(0.5, 0.5, 0.5)),
             ));
@@ -634,61 +685,136 @@ fn overlay_input(
     let pressed = DIGITS.iter().position(|k| keys.just_pressed(*k));
     let Some(index) = pressed else { return };
 
-    match *overlay {
-        HubOverlay::Shop => {
-            let items = shop_items(&meta);
-            let Some(item) = items.get(index) else { return };
-            if let Some(reason) = &item.blocked {
-                toasts.write(ToastMsg(format!("Le bousier refuse : {reason}.")));
-                return;
-            }
-            if !item.affordable {
-                toasts.write(ToastMsg("Pas assez de pattes. Le bousier soupire.".into()));
-                return;
-            }
-            meta.pattes -= item.price;
-            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::WeaponBought));
-            match item.action {
-                ShopAction::BuyTool(w) => {
-                    meta.claimable.retain(|x| *x != w);
-                    meta.unlocked.push(w);
-                    meta.tools_bought_this_cycle += 1;
-                    toasts.write(ToastMsg(format!(
-                        "{} récupéré ! Passe à l'établi pour l'équiper.",
-                        weapon_def(w).name
-                    )));
-                }
-                ShopAction::BuyUpgrade(u) => {
-                    match u {
-                        Upgrade::Hp => meta.up_hp += 1,
-                        Upgrade::Speed => meta.up_speed += 1,
-                        Upgrade::Dash => meta.up_dash += 1,
-                        Upgrade::Pattes => meta.up_pattes += 1,
-                    }
-                    toasts.write(ToastMsg("Upgrade acheté. Le bousier compte ses pattes.".into()));
-                }
-            }
-            save_meta(&meta);
-            // Forcer le rebuild de l'UI.
-            *overlay = HubOverlay::Shop;
+    let acted = match *overlay {
+        HubOverlay::Shop => purchase_item(index, &mut meta, &mut toasts, &mut sfx),
+        HubOverlay::Loadout => toggle_loadout(index, &meta, &mut loadout),
+        HubOverlay::None => false,
+    };
+    if acted {
+        overlay.set_changed(); // force le rebuild de l'UI
+    }
+}
+
+/// Achat de l'item n°`i` du bousier. Renvoie `true` si l'UI doit se rebuild.
+fn purchase_item(
+    i: usize,
+    meta: &mut MetaSave,
+    toasts: &mut MessageWriter<ToastMsg>,
+    sfx: &mut MessageWriter<crate::audio::PlaySfx>,
+) -> bool {
+    let items = shop_items(meta);
+    let Some(item) = items.get(i) else { return false };
+    if let Some(reason) = &item.blocked {
+        toasts.write(ToastMsg(format!("Le bousier refuse : {reason}.")));
+        return false;
+    }
+    if !item.affordable {
+        toasts.write(ToastMsg("Pas assez de pattes. Le bousier soupire.".into()));
+        return false;
+    }
+    // On extrait ce dont on a besoin avant de muter `meta`.
+    let price = item.price;
+    let action = item.action.clone();
+    drop(items);
+
+    meta.pattes -= price;
+    sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::WeaponBought));
+    match action {
+        ShopAction::BuyTool(w) => {
+            meta.claimable.retain(|x| *x != w);
+            meta.unlocked.push(w);
+            meta.tools_bought_this_cycle += 1;
+            toasts.write(ToastMsg(format!(
+                "{} récupéré ! Passe à l'établi pour l'équiper.",
+                weapon_def(w).name
+            )));
         }
-        HubOverlay::Loadout => {
-            let unlocked: Vec<WeaponKind> = ALL_WEAPONS
-                .iter()
-                .copied()
-                .filter(|w| meta.is_unlocked(*w))
-                .collect();
-            let Some(w) = unlocked.get(index).copied() else { return };
-            if let Some(slot) = loadout.0.iter_mut().find(|s| **s == Some(w)) {
-                *slot = None;
-            } else if let Some(slot) = loadout.0.iter_mut().find(|s| s.is_none()) {
-                *slot = Some(w);
-            } else {
-                loadout.0[1] = Some(w);
+        ShopAction::BuyUpgrade(u) => {
+            match u {
+                Upgrade::Hp => meta.up_hp += 1,
+                Upgrade::Speed => meta.up_speed += 1,
+                Upgrade::Dash => meta.up_dash += 1,
+                Upgrade::Pattes => meta.up_pattes += 1,
             }
-            // Forcer le rebuild de l'UI.
-            *overlay = HubOverlay::Loadout;
+            toasts.write(ToastMsg("Upgrade acheté. Le bousier compte ses pattes.".into()));
         }
-        HubOverlay::None => {}
+    }
+    save_meta(meta);
+    true
+}
+
+/// Équipe/retire l'arme n°`i` (parmi les débloquées). Renvoie `true` si l'UI
+/// doit se rebuild.
+fn toggle_loadout(i: usize, meta: &MetaSave, loadout: &mut Loadout) -> bool {
+    let unlocked: Vec<WeaponKind> = ALL_WEAPONS
+        .iter()
+        .copied()
+        .filter(|w| meta.is_unlocked(*w))
+        .collect();
+    let Some(w) = unlocked.get(i).copied() else { return false };
+    if let Some(slot) = loadout.0.iter_mut().find(|s| **s == Some(w)) {
+        *slot = None;
+    } else if let Some(slot) = loadout.0.iter_mut().find(|s| s.is_none()) {
+        *slot = Some(w);
+    } else {
+        loadout.0[1] = Some(w);
+    }
+    true
+}
+
+/// Clics souris sur les lignes de la boutique / de l'établi.
+fn overlay_click(
+    mut overlay: ResMut<HubOverlay>,
+    mut meta: ResMut<MetaSave>,
+    mut loadout: ResMut<Loadout>,
+    mut toasts: MessageWriter<ToastMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
+    shop_btns: Query<(&Interaction, &ShopButton), Changed<Interaction>>,
+    loadout_btns: Query<(&Interaction, &LoadoutButton), Changed<Interaction>>,
+) {
+    let mut acted = false;
+    for (interaction, btn) in &shop_btns {
+        if *interaction == Interaction::Pressed
+            && purchase_item(btn.0, &mut meta, &mut toasts, &mut sfx)
+        {
+            acted = true;
+        }
+    }
+    for (interaction, btn) in &loadout_btns {
+        if *interaction == Interaction::Pressed && toggle_loadout(btn.idx, &meta, &mut loadout) {
+            acted = true;
+        }
+    }
+    if acted {
+        overlay.set_changed();
+    }
+}
+
+/// Survol des lignes cliquables (boutique / établi).
+fn overlay_hover(
+    mut shop: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<ShopButton>, Without<LoadoutButton>),
+    >,
+    mut loadout: Query<
+        (&Interaction, &LoadoutButton, &mut BackgroundColor),
+        (Changed<Interaction>, Without<ShopButton>),
+    >,
+) {
+    for (interaction, mut bg) in &mut shop {
+        bg.0 = match interaction {
+            Interaction::Pressed => OV_BTN_PRESS,
+            Interaction::Hovered => OV_BTN_HOVER,
+            Interaction::None => OV_BTN_NORMAL,
+        };
+    }
+    for (interaction, btn, mut bg) in &mut loadout {
+        // Au repos, on restaure la couleur selon l'état équipé.
+        bg.0 = match interaction {
+            Interaction::Pressed => OV_BTN_PRESS,
+            Interaction::Hovered => OV_BTN_HOVER,
+            Interaction::None if btn.equipped => OV_BTN_PRESS,
+            Interaction::None => OV_BTN_NORMAL,
+        };
     }
 }

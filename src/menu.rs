@@ -3,6 +3,7 @@
 
 use bevy::prelude::*;
 
+use crate::audio::SoundCategory;
 use crate::common::*;
 use crate::meta::{save_meta, KeybindsSave, MetaSave};
 
@@ -35,6 +36,8 @@ enum MenuButton {
     Quit,
     Back,
     Rebind(Action),
+    /// Fait défiler le volume du bus audio (Mobs / Boss / Effets).
+    Volume(SoundCategory),
 }
 
 const BTN_NORMAL: Color = Color::srgb(0.15, 0.20, 0.30);
@@ -64,17 +67,24 @@ fn enter_title(
     mut view: ResMut<MenuView>,
     mut rebinding: ResMut<Rebinding>,
     kb: Res<Keybinds>,
+    meta: Res<MetaSave>,
 ) {
     *view = MenuView::Title;
     rebinding.0 = None;
-    build_menu(&mut commands, MenuView::Title, &kb, None);
+    build_menu(&mut commands, MenuView::Title, &kb, &meta, None);
 }
 
 // ---------------------------------------------------------------------------
 // Construction de l'UI
 // ---------------------------------------------------------------------------
 
-fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding: Option<Action>) {
+fn build_menu(
+    commands: &mut Commands,
+    view: MenuView,
+    kb: &Keybinds,
+    meta: &MetaSave,
+    rebinding: Option<Action>,
+) {
     commands
         .spawn((
             MenuRoot,
@@ -148,6 +158,12 @@ fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding:
                         };
                         btn!(p, MenuButton::Rebind(action), label, 420.0);
                     }
+                    // Volumes audio par bus (clique pour faire défiler).
+                    for cat in SoundCategory::ALL {
+                        let pct = (cat.volume(meta) * 100.0).round() as i32;
+                        let label = format!("Volume {} :  {pct}%", cat.label());
+                        btn!(p, MenuButton::Volume(cat), label, 420.0);
+                    }
                 }
                 MenuView::Credits => {
                     p.spawn((
@@ -168,7 +184,7 @@ fn build_menu(commands: &mut Commands, view: MenuView, kb: &Keybinds, rebinding:
 
             if view == MenuView::Settings {
                 p.spawn((
-                    Text::new("Clique une ligne puis presse la nouvelle touche · Échap annule"),
+                    Text::new("Touches : clique une ligne puis presse la nouvelle touche (Échap annule) · Volume : clique pour faire défiler"),
                     TextFont { font_size: 13.0, ..default() },
                     TextColor(Color::srgb(0.6, 0.6, 0.6)),
                     Node { margin: UiRect::top(Val::Px(10.0)), ..default() },
@@ -183,12 +199,13 @@ fn refresh(
     roots: &Query<Entity, With<MenuRoot>>,
     view: MenuView,
     kb: &Keybinds,
+    meta: &MetaSave,
     rebinding: Option<Action>,
 ) {
     for e in roots {
         commands.entity(e).despawn();
     }
-    build_menu(commands, view, kb, rebinding);
+    build_menu(commands, view, kb, meta, rebinding);
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +220,7 @@ fn menu_buttons(
     mut view: ResMut<MenuView>,
     mut rebinding: ResMut<Rebinding>,
     kb: Res<Keybinds>,
+    mut meta: ResMut<MetaSave>,
     mut next: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
     mut sfx: MessageWriter<crate::audio::PlaySfx>,
@@ -220,21 +238,28 @@ fn menu_buttons(
             MenuButton::Settings => {
                 *view = MenuView::Settings;
                 rebinding.0 = None;
-                refresh(&mut commands, &roots, *view, &kb, None);
+                refresh(&mut commands, &roots, *view, &kb, &meta, None);
             }
             MenuButton::Credits => {
                 *view = MenuView::Credits;
                 rebinding.0 = None;
-                refresh(&mut commands, &roots, *view, &kb, None);
+                refresh(&mut commands, &roots, *view, &kb, &meta, None);
             }
             MenuButton::Back => {
                 *view = MenuView::Title;
                 rebinding.0 = None;
-                refresh(&mut commands, &roots, *view, &kb, None);
+                refresh(&mut commands, &roots, *view, &kb, &meta, None);
             }
             MenuButton::Rebind(action) => {
                 rebinding.0 = Some(action);
-                refresh(&mut commands, &roots, *view, &kb, rebinding.0);
+                refresh(&mut commands, &roots, *view, &kb, &meta, rebinding.0);
+            }
+            MenuButton::Volume(cat) => {
+                // Fait défiler 0 → 25 → 50 → 75 → 100 → 0 %.
+                let next_vol = cat.volume(&meta) + 0.25;
+                cat.set_volume(&mut meta, if next_vol > 1.001 { 0.0 } else { next_vol });
+                save_meta(&meta);
+                refresh(&mut commands, &roots, *view, &kb, &meta, rebinding.0);
             }
         }
     }
@@ -254,7 +279,7 @@ fn rebind_capture(
 
     if keys.just_pressed(KeyCode::Escape) {
         rebinding.0 = None;
-        refresh(&mut commands, &roots, *view, &kb, None);
+        refresh(&mut commands, &roots, *view, &kb, &meta, None);
         return;
     }
     for (key, _) in BINDABLE {
@@ -263,7 +288,7 @@ fn rebind_capture(
             meta.keybinds = KeybindsSave::from_binds(&kb);
             save_meta(&meta);
             rebinding.0 = None;
-            refresh(&mut commands, &roots, *view, &kb, None);
+            refresh(&mut commands, &roots, *view, &kb, &meta, None);
             return;
         }
     }

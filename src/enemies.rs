@@ -633,7 +633,6 @@ fn lunge_damage(
 fn enemy_shoot(
     time: Res<Time>,
     mut commands: Commands,
-    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     player: Query<&Transform, With<Player>>,
     mut enemies: Query<(&EnemyKind, &Transform, &ContactDmg, &mut ShootCd), With<Enemy>>,
 ) {
@@ -651,10 +650,6 @@ fn enemy_shoot(
             cd.0 = Timer::from_seconds(shoot_cd, TimerMode::Once);
             let dir = (player_pos - pos).normalize_or(Vec2::X);
             spawn_enemy_projectile(&mut commands, pos, dir * 250.0, contact.0, ENEMY_BALL);
-            sfx.write(crate::audio::PlaySfx(match kind {
-                EnemyKind::Cigale => crate::audio::Sfx::CigaleShoot,
-                _ => crate::audio::Sfx::GuepeShoot,
-            }));
         }
     }
 }

@@ -13,8 +13,58 @@ use bevy::prelude::*;
 
 use crate::boss::BossKind;
 use crate::common::{
-    AppState, DamageKind, DamageMsg, EnemyDied, Player, PlayerDied, RoomResultMsg,
+    AppState, BossTag, DamageKind, DamageMsg, EnemyDied, Player, PlayerDied, RoomResultMsg,
 };
+use crate::enemies::EnemyKind;
+use crate::meta::MetaSave;
+
+// ---------------------------------------------------------------------------
+// Bus de volume (réglables dans les Options)
+// ---------------------------------------------------------------------------
+
+/// Les 3 bus de volume audio exposés dans les Options.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SoundCategory {
+    Mobs,
+    Boss,
+    Effects,
+}
+
+impl SoundCategory {
+    pub const ALL: [SoundCategory; 3] = [
+        SoundCategory::Mobs,
+        SoundCategory::Boss,
+        SoundCategory::Effects,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            SoundCategory::Mobs => "Mobs",
+            SoundCategory::Boss => "Boss",
+            SoundCategory::Effects => "Effets",
+        }
+    }
+
+    /// Volume courant (0.0–1.0) de ce bus dans la sauvegarde.
+    pub fn volume(self, meta: &MetaSave) -> f32 {
+        match self {
+            SoundCategory::Mobs => meta.vol_mobs,
+            SoundCategory::Boss => meta.vol_boss,
+            SoundCategory::Effects => meta.vol_effects,
+        }
+        .clamp(0.0, 1.0)
+    }
+
+    /// Modifie le volume de ce bus dans la sauvegarde.
+    pub fn set_volume(self, meta: &mut MetaSave, v: f32) {
+        let v = v.clamp(0.0, 1.0);
+        match self {
+            SoundCategory::Mobs => meta.vol_mobs = v,
+            SoundCategory::Boss => meta.vol_boss = v,
+            SoundCategory::Effects => meta.vol_effects = v,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Catalogue des sons
@@ -129,6 +179,25 @@ impl Sfx {
         }
     }
 
+    /// Bus de volume auquel ce son appartient (Options).
+    fn category(self) -> SoundCategory {
+        match self {
+            // Boss : cris, attaques, défaite.
+            Sfx::BossAraignee
+            | Sfx::BossScorpion
+            | Sfx::BossGromp
+            | Sfx::BossLimace
+            | Sfx::BossMillePattes
+            | Sfx::GrompLick
+            | Sfx::PlopSlug
+            | Sfx::BossDefeated => SoundCategory::Boss,
+            // Mobs : tirs et mort des ennemis ordinaires.
+            Sfx::GuepeShoot | Sfx::CigaleShoot | Sfx::EnemyExplode => SoundCategory::Mobs,
+            // Tout le reste : combat joueur, méta, interface, voix.
+            _ => SoundCategory::Effects,
+        }
+    }
+
     /// Cri d'apparition associé à un boss.
     pub fn boss(kind: BossKind) -> Self {
         match kind {
@@ -192,11 +261,16 @@ impl Plugin for AudioPlugin {
             // `react_to_events` écrit des PlaySfx ; on l'enchaîne avant
             // `play_sfx` pour jouer le son dans la même frame. `stop_boss_cry`
             // coupe ensuite le cri du boss si le joueur vient de mourir.
+            // `.after(GameSet::Post)` : la mort des ennemis (check_deaths, en
+            // Post) est traitée avant, donc on voit dégâts + morts de la même
+            // frame et on sait quel coup était létal.
             .add_systems(
                 Update,
-                (react_to_events, play_sfx, stop_boss_cry_on_death).chain(),
+                (react_to_events, play_sfx, stop_boss_cry_on_death)
+                    .chain()
+                    .after(crate::common::GameSet::Post),
             )
-            .add_systems(Update, character_chatter);
+            .add_systems(Update, (character_chatter, mob_ambient_sound));
     }
 }
 
@@ -210,6 +284,7 @@ fn play_sfx(
     mut commands: Commands,
     mut msgs: MessageReader<PlaySfx>,
     asset_server: Res<AssetServer>,
+    meta: Res<MetaSave>,
     cries: Query<Entity, With<BossCry>>,
 ) {
     for msg in msgs.read() {
@@ -221,9 +296,11 @@ fn play_sfx(
                 commands.entity(e).despawn();
             }
         }
+        // Volume final = volume propre du son × volume du bus (Options).
+        let vol = sfx.volume() * sfx.category().volume(&meta);
         let mut e = commands.spawn((
             AudioPlayer::new(asset_server.load(sfx.path())),
-            PlaybackSettings::DESPAWN.with_volume(Volume::Linear(sfx.volume())),
+            PlaybackSettings::DESPAWN.with_volume(Volume::Linear(vol)),
         ));
         if sfx.is_boss_cry() {
             e.insert(BossCry);
@@ -256,8 +333,12 @@ fn react_to_events(
     mut sfx: MessageWriter<PlaySfx>,
 ) {
     // Morts d'ennemis : petite explosion (mob) ou jingle de victoire (boss).
+    // On retient les entités mortes cette frame pour ne PAS jouer « Hit » sur le
+    // coup qui tue (juste le son de mort).
     let mut any_mob_died = false;
+    let mut dead: Vec<Entity> = Vec::new();
     for ev in deaths.read() {
+        dead.push(ev.entity);
         if ev.was_boss {
             sfx.write(PlaySfx(Sfx::BossDefeated));
         } else {
@@ -274,8 +355,9 @@ fn react_to_events(
     for msg in damage.read() {
         if players.contains(msg.target) {
             player_hurt = true;
-        } else if matches!(msg.kind, DamageKind::Hit) {
-            // Les ticks de poison ne « claquent » pas ; seuls les coups francs.
+        } else if matches!(msg.kind, DamageKind::Hit) && !dead.contains(&msg.target) {
+            // Coups francs sur un mob ENCORE vivant (pas les ticks de poison, et
+            // pas le coup létal — celui-là ne joue que le son de mort).
             enemy_hit = true;
         }
     }
@@ -298,11 +380,38 @@ fn react_to_events(
     }
 }
 
+/// Son de la Guêpe / Cigale : joué **une seule fois** à l'apparition du mob,
+/// greffé en enfant de l'entité — il s'arrête donc tout seul quand le mob meurt
+/// (le `despawn` récursif emporte l'entité audio). Volume au bus Mobs.
+fn mob_ambient_sound(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    meta: Res<MetaSave>,
+    q: Query<(Entity, &EnemyKind), (Added<EnemyKind>, Without<BossTag>)>,
+) {
+    for (e, kind) in &q {
+        let sfx = match kind {
+            EnemyKind::Guepe => Sfx::GuepeShoot,
+            EnemyKind::Cigale => Sfx::CigaleShoot,
+            _ => continue,
+        };
+        let vol = sfx.volume() * sfx.category().volume(&meta);
+        commands.entity(e).with_children(|p| {
+            p.spawn((
+                AudioPlayer::new(asset_server.load(sfx.path())),
+                PlaybackSettings::DESPAWN.with_volume(Volume::Linear(vol)),
+            ));
+        });
+    }
+}
+
 /// Jingle d'ouverture du jeu (joué une fois au lancement).
-fn play_opening(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn play_opening(mut commands: Commands, asset_server: Res<AssetServer>, meta: Res<MetaSave>) {
+    let sfx = Sfx::CarsOpening;
+    let vol = sfx.volume() * sfx.category().volume(&meta);
     commands.spawn((
-        AudioPlayer::new(asset_server.load(Sfx::CarsOpening.path())),
-        PlaybackSettings::DESPAWN.with_volume(Volume::Linear(Sfx::CarsOpening.volume())),
+        AudioPlayer::new(asset_server.load(sfx.path())),
+        PlaybackSettings::DESPAWN.with_volume(Volume::Linear(vol)),
     ));
 }
 

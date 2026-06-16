@@ -125,6 +125,14 @@ impl Augments {
 #[derive(Resource, Default)]
 pub struct AugmentOffer(pub Vec<Augment>);
 
+/// Carte d'augment cliquable (index dans l'offre).
+#[derive(Component, Clone, Copy)]
+struct AugmentButton(usize);
+
+const AUG_NORMAL: Color = Color::srgba(0.12, 0.2, 0.1, 0.95);
+const AUG_HOVER: Color = Color::srgba(0.2, 0.34, 0.16, 0.98);
+const AUG_PRESS: Color = Color::srgba(0.28, 0.46, 0.22, 0.98);
+
 /// Ce qui se passe une fois l'augment choisi.
 #[derive(Resource, Clone, Copy, PartialEq, Default)]
 pub enum AfterAugment {
@@ -162,7 +170,7 @@ impl Plugin for AugmentsPlugin {
             .add_systems(OnEnter(RunPhase::Augment), open_augment_ui)
             .add_systems(
                 Update,
-                pick_augment.run_if(in_state(RunPhase::Augment)),
+                (pick_augment, augment_hover).run_if(in_state(RunPhase::Augment)),
             );
     }
 }
@@ -212,6 +220,8 @@ fn open_augment_ui(
             for (i, augment) in offer.0.iter().enumerate() {
                 parent
                     .spawn((
+                        Button,
+                        AugmentButton(i),
                         Node {
                             flex_direction: FlexDirection::Column,
                             padding: UiRect::all(Val::Px(12.0)),
@@ -219,7 +229,7 @@ fn open_augment_ui(
                             row_gap: Val::Px(4.0),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(0.12, 0.2, 0.1, 0.95)),
+                        BackgroundColor(AUG_NORMAL),
                     ))
                     .with_children(|card| {
                         card.spawn((
@@ -241,7 +251,7 @@ fn open_augment_ui(
                     });
             }
             parent.spawn((
-                Text::new("Choisis avec 1, 2 ou 3"),
+                Text::new("Clique une carte (ou 1, 2, 3)"),
                 TextFont {
                     font_size: 14.0,
                     ..default()
@@ -249,6 +259,19 @@ fn open_augment_ui(
                 TextColor(Color::srgb(0.6, 0.6, 0.6)),
             ));
         });
+}
+
+/// Survol des cartes d'augment.
+fn augment_hover(
+    mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<AugmentButton>)>,
+) {
+    for (interaction, mut bg) in &mut q {
+        bg.0 = match interaction {
+            Interaction::Pressed => AUG_PRESS,
+            Interaction::Hovered => AUG_HOVER,
+            Interaction::None => AUG_NORMAL,
+        };
+    }
 }
 
 fn pick_augment(
@@ -261,8 +284,17 @@ fn pick_augment(
     mut next_state: ResMut<NextState<AppState>>,
     mut run: ResMut<crate::rooms::RunState>,
     mut meta: ResMut<crate::meta::MetaSave>,
+    buttons: Query<(&Interaction, &AugmentButton), Changed<Interaction>>,
 ) {
-    let picked = if keys.just_pressed(KeyCode::Digit1) {
+    // Clic sur une carte (prioritaire), sinon touches 1/2/3.
+    let clicked = buttons
+        .iter()
+        .find(|(i, _)| **i == Interaction::Pressed)
+        .and_then(|(_, b)| offer.0.get(b.0).copied());
+
+    let picked = if let Some(a) = clicked {
+        Some(a)
+    } else if keys.just_pressed(KeyCode::Digit1) {
         offer.0.first().copied()
     } else if keys.just_pressed(KeyCode::Digit2) {
         offer.0.get(1).copied()

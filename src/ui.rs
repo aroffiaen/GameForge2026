@@ -2,9 +2,10 @@
 
 use bevy::prelude::*;
 
+use crate::audio::SoundCategory;
 use crate::augments::{Augment, Augments};
 use crate::common::*;
-use crate::meta::MetaSave;
+use crate::meta::{save_meta, MetaSave};
 use crate::player::{Dash, PlayerStats, SpeedInfo};
 use crate::rooms::{RoomKind, RunState};
 use crate::stats::{Stat, Stats};
@@ -39,6 +40,12 @@ struct StatsPanel;
 struct ChronoLabel;
 #[derive(Component)]
 struct PauseUi;
+/// Bouton de volume du menu pause (clic = fait défiler le bus).
+#[derive(Component, Clone, Copy)]
+struct PauseVolumeButton(SoundCategory);
+/// Texte d'un bouton de volume (mis à jour en direct).
+#[derive(Component, Clone, Copy)]
+struct PauseVolumeLabel(SoundCategory);
 #[derive(Component)]
 struct Toast {
     timer: Timer,
@@ -77,7 +84,8 @@ impl Plugin for UiPlugin {
             )
             .add_systems(
                 Update,
-                pause_system.run_if(in_state(AppState::EnRun).or(in_state(AppState::Terrasse))),
+                (pause_system, pause_audio_buttons)
+                    .run_if(in_state(AppState::EnRun).or(in_state(AppState::Terrasse))),
             )
             .add_systems(
                 Update,
@@ -677,12 +685,93 @@ fn pause_system(
                 }
             });
 
+            // Panneau AUDIO : 3 bus de volume, clic pour faire défiler.
+            p.spawn((
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    padding: UiRect::all(Val::Px(14.0)),
+                    width: Val::Px(420.0),
+                    row_gap: Val::Px(6.0),
+                    ..default()
+                },
+                BackgroundColor(panel_bg),
+            ))
+            .with_children(|panel| {
+                panel.spawn((
+                    Text::new("— AUDIO —"),
+                    TextFont { font_size: 17.0, ..default() },
+                    TextColor(Color::srgb(0.6, 1.0, 0.7)),
+                ));
+                for cat in SoundCategory::ALL {
+                    let pct = (cat.volume(&meta) * 100.0).round() as i32;
+                    panel
+                        .spawn((
+                            Button,
+                            PauseVolumeButton(cat),
+                            Node {
+                                width: Val::Percent(100.0),
+                                padding: UiRect::all(Val::Px(6.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..default()
+                            },
+                            BackgroundColor(PAUSE_BTN_NORMAL),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                PauseVolumeLabel(cat),
+                                Text::new(format!("Volume {} :  {pct}%", cat.label())),
+                                TextFont { font_size: 16.0, ..default() },
+                                TextColor(Color::srgb(0.9, 0.95, 0.9)),
+                            ));
+                        });
+                }
+            });
+
             p.spawn((
                 Text::new("Échap : reprendre        A : quitter au cabanon"),
                 TextFont { font_size: 15.0, ..default() },
                 TextColor(Color::srgb(0.7, 0.7, 0.7)),
             ));
         });
+}
+
+const PAUSE_BTN_NORMAL: Color = Color::srgb(0.15, 0.20, 0.30);
+const PAUSE_BTN_HOVER: Color = Color::srgb(0.24, 0.34, 0.50);
+const PAUSE_BTN_PRESS: Color = Color::srgb(0.32, 0.52, 0.72);
+
+/// Gère les boutons de volume du menu pause : clic = bus suivant (cycle),
+/// survol = couleur, et rafraîchit l'affichage du pourcentage en direct.
+fn pause_audio_buttons(
+    mut meta: ResMut<MetaSave>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
+    mut buttons: Query<
+        (&Interaction, &PauseVolumeButton, &mut BackgroundColor),
+        Changed<Interaction>,
+    >,
+    mut labels: Query<(&mut Text, &PauseVolumeLabel)>,
+) {
+    let mut changed = false;
+    for (interaction, btn, mut bg) in &mut buttons {
+        match interaction {
+            Interaction::Pressed => {
+                bg.0 = PAUSE_BTN_PRESS;
+                let next = btn.0.volume(&meta) + 0.25;
+                btn.0.set_volume(&mut meta, if next > 1.001 { 0.0 } else { next });
+                save_meta(&meta);
+                sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::Click));
+                changed = true;
+            }
+            Interaction::Hovered => bg.0 = PAUSE_BTN_HOVER,
+            Interaction::None => bg.0 = PAUSE_BTN_NORMAL,
+        }
+    }
+    if changed {
+        for (mut text, label) in &mut labels {
+            let pct = (label.0.volume(&meta) * 100.0).round() as i32;
+            text.0 = format!("Volume {} :  {pct}%", label.0.label());
+        }
+    }
 }
 
 fn reset_pause(mut paused: ResMut<Paused>, mut commands: Commands, q: Query<Entity, With<PauseUi>>) {

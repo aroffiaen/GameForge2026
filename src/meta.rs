@@ -39,6 +39,10 @@ pub struct MetaSave {
     pub tools_bought_this_cycle: u8,
     /// Touches configurables, persistées par libellé (Settings).
     pub keybinds: KeybindsSave,
+    /// Volumes audio par bus (0.0–1.0), réglables dans les Options.
+    pub vol_mobs: f32,
+    pub vol_boss: f32,
+    pub vol_effects: f32,
 }
 
 /// Représentation sérialisable des keybinds (libellés AZERTY).
@@ -112,6 +116,9 @@ impl Default for MetaSave {
             deaths: 0,
             tools_bought_this_cycle: 0,
             keybinds: KeybindsSave::default(),
+            vol_mobs: 1.0,
+            vol_boss: 1.0,
+            vol_effects: 1.0,
         }
     }
 }

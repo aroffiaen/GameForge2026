@@ -407,6 +407,9 @@ pub struct DamageMsg {
 #[derive(Message)]
 #[allow(dead_code)] // pos/pattes : utiles aux futurs consommateurs (audio, FX…)
 pub struct EnemyDied {
+    /// L'entité morte (déjà despawn, mais l'id sert à corréler les dégâts du
+    /// coup létal pour ne pas jouer « Hit » en plus du son de mort).
+    pub entity: Entity,
     pub pos: Vec2,
     pub pattes: u32,
     pub was_boss: bool,
@@ -797,6 +800,7 @@ fn check_deaths(
         }
 
         died.write(EnemyDied {
+            entity: e,
             pos,
             pattes: count as u32,
             was_boss: is_boss,
