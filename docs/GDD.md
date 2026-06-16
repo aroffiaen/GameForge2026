@@ -6,7 +6,7 @@
 > **Tech :** Rust + [Bevy](https://bevyengine.org/) `0.18`. **Build/jouée nativement sous Windows** (GPU NVIDIA/Vulkan) ; dev sous WSL. Lancement : `./play-windows.sh` (depuis WSL) ou `C:\GameForge2026\Jouer.bat`.
 > **Inspirations notées :** Hades, Subway Surfers, « QTE / doors rapides ».
 
-> ⚠️ **Statut de la refonte :** ce GDD décrit la **cible v0.3**. Le code actuel implémente encore la v0.2 (vitesse→dégâts au cœur, 8 mobs, gauntlet de vagues, etc.). La **checklist §18** liste tout ce qu'il faut migrer. On attaque après le merge du travail en cours.
+> ✅ **Statut de la refonte :** la **v0.3 est implémentée et jouable** — toute la checklist §18 (A→H) est faite, plus les finitions §20 (sprites mobs/boss, audio complet + 3 bus de volume, bac à sable de dev, touches configurables réellement branchées, menus cliquables). Un **build Windows** est publié en [Release `v0.3`](https://github.com/aroffiaen/GameForge2026/releases/tag/v0.3).
 
 ---
 
@@ -225,38 +225,38 @@ Atteint après les 5 biomes (ou accès direct depuis le cabanon une fois débloq
 ---
 
 ## 11. Contrôles
-ZQSD/WASD déplacement · souris visée · clic G/D armes · Espace/Shift dash · E interagir · Échap pause · 1/2/3 choix (portes/augments).
+ZQSD/WASD déplacement · souris visée · clic G/D armes · Espace dash · E interagir · Échap pause · 1/2/3 ou **clic** choix (portes/augments, boutique, établi). **Déplacement / dash / interagir sont reconfigurables** dans les Options (touches branchées sur `Keybinds`). **F3** (hors run) : bac à sable de dev (§18.I).
 
 ---
 
 ## 12. Direction artistique
-**Pixel art**, perso en **couches séparées** : jambes (orientées déplacement) · bras (orientés visée, tiennent les armes) · chapeau (au-dessus, teinté : bleu i-frames de dash, rouge dégâts). Feedback de vitesse (traînée). Police DejaVu Sans embarquée. *(Sprites en cours d'intégration.)*
+**Pixel art**, perso en **couches séparées** : jambes (orientées déplacement) · bras (orientés visée, tiennent les armes) · chapeau (au-dessus, teinté : bleu i-frames de dash, rouge dégâts). Feedback de vitesse (traînée). Police DejaVu Sans embarquée. **Sprites mobs & boss intégrés** (les armes et le jardinier l'étaient déjà) ; les tells de combat (windup rouge, poison vert) restent lisibles par teinte par-dessus la texture.
 
 ---
 
-## 13. Architecture technique *(cible)*
-Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash, couches sprites), `stats` *(nouveau : valeurs de stats + Stats-Up + chrono)*, `weapons`, `enemies` (3 archétypes, attaques, pas de collision), `boss`, `biomes`, `rooms` (5×5, portes, chrono, élites), `augments`, `meta`, `cabanon`, `terrasse`, `ui`.
+## 13. Architecture technique
+Modules Bevy (plats dans `src/`) : `common` (états, dégâts, ordre des systèmes), `player` (déplacement, dash, couches sprites), `stats` (7 stats + effets), `weapons`, `enemies` (3 archétypes, attaques, sprites, sons), `boss`, `biomes`, `rooms` (5×5, portes, chrono, élites, bac à sable), `augments`, `meta` (sauvegarde, keybinds, volumes), `cabanon`, `terrasse`, `healthbar`, `menu` (titre + Options), `audio` (SFX, bus de volume, voix), `dev` (bac à sable F3), `ui` (HUD, pause).
 
 ---
 
 ## 18. Refonte v0.3 — Checklist d'implémentation
 
 ### A. Système de stats (nouveau cœur)
-- [ ] Ressource `Stats` : 7 stats en % (PV, RégénPV, DMG, Résistance, MoveSpeed, AttackSpeed, DashCD), base 100 %, plancher 25 %.
-- [ ] Brancher chaque stat sur son effet (PV max, régén, dégâts, réduction, vitesse, cadence, cooldown dash).
-- [ ] Panneau de stats dans le HUD (7 valeurs).
+- [x] Ressource `Stats` : 7 stats en % (PV, RégénPV, DMG, Résistance, MoveSpeed, AttackSpeed, DashCD), base 100 %, plancher 25 %.
+- [x] Brancher chaque stat sur son effet (PV max, régén, dégâts, réduction, vitesse, cadence, cooldown dash).
+- [x] Panneau de stats dans le HUD (7 valeurs).
 
 ### B. Stats-Up chronométré
-- [ ] Système de **3 portes** après chaque salle (hors boss/terrasse), 1 stat random distincte par porte.
-- [ ] Choix d'une porte = **mise** de la stat ; la salle suivante devient chrono.
-- [ ] **Chrono** par salle (seuil adapté à la difficulté ; permissif si élite).
-- [ ] Réussite → **+2 pts/s d'avance** sur la stat misée. Échec → **−1 pt/s de retard, cap −15**.
-- [ ] Toasts de gain/perte ; chrono visible dans le HUD.
-- [ ] 1re salle du run = normale (pas de chrono).
+- [x] Système de **3 portes** après chaque salle (hors boss/terrasse), 1 stat random distincte par porte.
+- [x] Choix d'une porte = **mise** de la stat ; la salle suivante devient chrono.
+- [x] **Chrono** par salle (seuil adapté à la difficulté ; permissif si élite).
+- [x] Réussite → **+2 pts/s d'avance** sur la stat misée. Échec → **−1 pt/s de retard, cap −15**.
+- [x] Toasts de gain/perte ; chrono visible dans le HUD.
+- [x] 1re salle du run = normale (pas de chrono).
 
 ### C. Retrait / déplacement de la vitesse→dégâts
-- [ ] Retirer le `mult` vitesse→dégâts du calcul de dégâts cœur.
-- [ ] Le reproposer en **augment « Élan »** : ×0.8 immobile → ×1.5 vitesse max.
+- [x] Retirer le `mult` vitesse→dégâts du calcul de dégâts cœur.
+- [x] Le reproposer en **augment « Élan »** : ×0.8 immobile → ×1.5 vitesse max.
 
 ### D. Refonte ennemis
 - [x] Nouveau roster **6 mobs** (Fourmi, Escargot / Araignée, Criquet / Guêpe, Cigale).
@@ -287,6 +287,14 @@ Modules Bevy : `common` (états, stats, dégâts), `player` (déplacement, dash,
 - [x] **Supprimer salles trésor & secrètes.** *(fait en B)*
 - [x] Trier le **pool d'augments** : enlever les augments de **% brut** (doublons des stats), garder les **mécaniques**. *(Jambes de criquet, Aiguillon, Carapace retirés ; Café du bousier conservé car « accélération » ≠ stat.)*
 
+### I. Finitions intégrées (post-checklist, livrées en v0.3)
+- [x] **Sprites mobs & boss** branchés (`assets/sprites/Mobs/` et `/Boss/`), tints de tell préservés, tailles réglables par type (`mob_sprite_scale`, `BOSS_SPRITE_SCALE`).
+- [x] **Audio complet** : SFX de combat (coup, dégât joueur, mort, dash, pattes, stat-up…), cris/attaques de boss, voix du perso (dave), jingles (ouverture, record terrasse). Anti-spam (1 son/frame pour les coups), **coup létal = son de mort seul** (pas de « Hit »). Sons de mobs (guêpe/cigale) joués **une fois** et coupés à la mort.
+- [x] **3 bus de volume** réglables (**Mobs / Boss / Effets**), persistés (`save.ron`), accessibles depuis les **Options** (titre) **et le menu pause** en jeu.
+- [x] **Touches configurables réellement branchées** : déplacement, dash, interagir lisent `Keybinds` (le rebind des Options fonctionne en jeu).
+- [x] **Menus cliquables à la souris** : choix d'augment, boutique du bousier, établi, volumes (clavier conservé en parallèle).
+- [x] **Bac à sable de dev** (touche **F3** depuis le titre/cabanon/mort) : spawn de chaque mob/boss/élite, édition des stats et augments à la volée, godmode, soin — pour le test/tuning.
+
 ---
 
 ## 19. Restant à trancher
@@ -305,4 +313,4 @@ Encore ouvert :
 
 ---
 
-*Document maintenu au fil du projet. La v0.3 est la cible ; le code migre selon la checklist §18 après le merge en cours.*
+*Document maintenu au fil du projet. La **v0.3 est livrée** (checklist §18 A→I faite, build Windows en Release). Reste surtout du **tuning de playtest** (valeurs d'armes, seuils de chrono) et le boss des Dalles (placeholder Araignée géante).*
