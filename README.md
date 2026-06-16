@@ -114,27 +114,4 @@ cargo run        # compile puis lance le jeu
 
 ---
 
-## 📍 État du projet
 
-🚧 **Très tôt — squelette de projet.** Le code (`src/main.rs`) est encore un simple
-*hello world* : le présent README fixe la **vision** et les **specs de base** avant
-d'attaquer le développement.
-
-📖 La conception détaillée (mécaniques, armes, augments, structure des runs, méta-progression,
-lore…) vit dans le **[Game Design Document](docs/GDD.md)**.
-
-### Roadmap (esquisse)
-
-- [ ] Ouvrir une fenêtre Bevy + boucle de jeu de base
-- [ ] Personnage déplaçable (top-down) avec mobilité/dash
-- [ ] Système « vitesse → dégâts »
-- [ ] Système d'armes (2 slots, sprite séparé) + poings
-- [ ] Ennemis basiques + une salle
-- [ ] Enchaînement de salles (structure « tower »)
-- [ ] Système d'augments + premières synergies
-- [ ] Méta-progression (déblocages permanents)
-- [ ] Mode final « terrasse » (survie chronométrée)
-
-## ❓ Questions ouvertes
-
-- **Nom définitif** du jeu (actuellement *GameForge2026*, nom de projet).
