@@ -836,6 +836,7 @@ fn handle_player_death(
     stats: Res<RunStats>,
     state: Res<State<AppState>>,
     terrasse: Option<Res<crate::terrasse::TerrasseState>>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     mut next: ResMut<NextState<AppState>>,
     mut next_phase: ResMut<NextState<RunPhase>>,
 ) {
@@ -855,6 +856,8 @@ fn handle_player_death(
         if t > meta.best_terrasse {
             meta.best_terrasse = t;
             new_best = true;
+            // Record de survie battu sur la terrasse : jingle « world premiere ».
+            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::WorldPremiere));
         }
     }
 
@@ -878,6 +881,7 @@ fn collect_pattes(
     mut commands: Commands,
     mut meta: ResMut<MetaSave>,
     mut stats: ResMut<RunStats>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     mut pickups: Query<(Entity, &mut Transform, &PattePickup), Without<Player>>,
     player: Query<&Transform, With<Player>>,
 ) {
@@ -896,6 +900,7 @@ fn collect_pattes(
         if dist < 18.0 {
             meta.pattes += pickup.0 as u64;
             stats.pattes += pickup.0 as u64;
+            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::Pickup));
             commands.entity(e).despawn();
         }
     }

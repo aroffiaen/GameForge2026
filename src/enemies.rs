@@ -144,6 +144,18 @@ pub fn def(kind: EnemyKind) -> EnemyDef {
 /// Couleur des projectiles ennemis : une « boule rouge » lisible (GDD §8).
 const ENEMY_BALL: Color = Color::srgb(0.95, 0.16, 0.12);
 
+/// Sprite de chaque mob (assets/sprites/Mobs/, rangé par archétype).
+pub fn enemy_sprite_path(kind: EnemyKind) -> &'static str {
+    match kind {
+        EnemyKind::Fourmi => "sprites/Mobs/Chase/fourmi.png",
+        EnemyKind::Escargot => "sprites/Mobs/Chase/escargot.png",
+        EnemyKind::Araignee => "sprites/Mobs/Lunge/araignee.png",
+        EnemyKind::Criquet => "sprites/Mobs/Lunge/cafard.png",
+        EnemyKind::Guepe => "sprites/Mobs/Range/guepe.png",
+        EnemyKind::Cigale => "sprites/Mobs/Range/cigale.png",
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Composants
 // ---------------------------------------------------------------------------
@@ -331,6 +343,49 @@ pub fn spawn_enemy(
     id
 }
 
+/// Greffe la texture du mob dès son apparition. On laisse `BaseColor`/`color`
+/// au blanc pour que la texture s'affiche telle quelle ; les tells (windup
+/// rouge, poison vert…) restent lisibles car `enemy_tint` multiplie cette
+/// teinte par-dessus. Les élites gardent un voile violet (GDD §8). Les boss
+/// sont exclus (ils portent leur propre sprite, `Without<BossTag>`).
+fn apply_enemy_sprites(
+    asset_server: Res<AssetServer>,
+    mut q: Query<
+        (&EnemyKind, &Radius, &mut Sprite, &mut BaseColor, Has<Elite>),
+        (Added<EnemyKind>, Without<BossTag>),
+    >,
+) {
+    for (kind, radius, mut sprite, mut base, elite) in &mut q {
+        sprite.image = asset_server.load(enemy_sprite_path(*kind));
+        // Le sprite est volontairement plus grand que la hitbox (`Radius`) pour
+        // que le mob reste lisible — l'art déborde un peu du cercle de collision.
+        sprite.custom_size = Some(Vec2::splat(radius.0 * mob_sprite_scale(*kind)));
+        let tint = if elite {
+            Color::WHITE.mix(&Color::srgb(0.7, 0.2, 0.9), 0.3)
+        } else {
+            Color::WHITE
+        };
+        base.0 = tint;
+        sprite.color = tint;
+    }
+}
+
+/// Taille visuelle du sprite d'un mob, en multiples du rayon de hitbox.
+/// Réglée par type : certains PNG ont beaucoup de marge transparente et ont
+/// besoin d'un facteur plus gros pour paraître à la bonne taille.
+fn mob_sprite_scale(kind: EnemyKind) -> f32 {
+    // Cible : chaque mob ~taille du perso ou plus gros. Les facteurs diffèrent
+    // car chaque PNG a une marge transparente propre.
+    match kind {
+        EnemyKind::Criquet => 70.0,
+        EnemyKind::Araignee => 42.0,
+        EnemyKind::Escargot => 46.0,
+        EnemyKind::Fourmi => 28.0,
+        EnemyKind::Guepe => 26.0,
+        EnemyKind::Cigale => 24.0,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -339,7 +394,8 @@ pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
+        app.add_systems(Update, apply_enemy_sprites)
+        .add_systems(
             Update,
             (ai_movement, enemy_shoot, separation, enemy_tint)
                 .in_set(GameSet::Ai)
@@ -577,6 +633,7 @@ fn lunge_damage(
 fn enemy_shoot(
     time: Res<Time>,
     mut commands: Commands,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     player: Query<&Transform, With<Player>>,
     mut enemies: Query<(&EnemyKind, &Transform, &ContactDmg, &mut ShootCd), With<Enemy>>,
 ) {
@@ -594,6 +651,10 @@ fn enemy_shoot(
             cd.0 = Timer::from_seconds(shoot_cd, TimerMode::Once);
             let dir = (player_pos - pos).normalize_or(Vec2::X);
             spawn_enemy_projectile(&mut commands, pos, dir * 250.0, contact.0, ENEMY_BALL);
+            sfx.write(crate::audio::PlaySfx(match kind {
+                EnemyKind::Cigale => crate::audio::Sfx::CigaleShoot,
+                _ => crate::audio::Sfx::GuepeShoot,
+            }));
         }
     }
 }

@@ -15,7 +15,7 @@ use rand::prelude::*;
 use crate::common::*;
 use crate::enemies::{spawn_enemy, spawn_enemy_projectile, AiSpeed, EnemyKind, HazardPuddle, PattesDrop};
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum BossKind {
     Araignee,
     Scorpion,
@@ -34,6 +34,17 @@ impl BossKind {
             BossKind::Gromp => "Grompaud",
             BossKind::MegaLimace => "Méga-Limace",
             BossKind::MillePattes => "Mille-Pattes",
+        }
+    }
+
+    /// Sprite du boss (assets/sprites/Boss/).
+    pub fn sprite_path(self) -> &'static str {
+        match self {
+            BossKind::Araignee => "sprites/Boss/araignee.png",
+            BossKind::Scorpion => "sprites/Boss/scorpion.png",
+            BossKind::Gromp => "sprites/Boss/crapaud.png",
+            BossKind::MegaLimace => "sprites/Boss/limasse.png",
+            BossKind::MillePattes => "sprites/Boss/Millepattes.png",
         }
     }
 }
@@ -61,7 +72,7 @@ pub fn spawn_boss(commands: &mut Commands, kind: BossKind, pos: Vec2, scale: f32
         _ => Vec2::splat(radius * 2.1),
     };
     let mut e = commands.spawn((
-        (Enemy, BossTag, BossAiTag),
+        (Enemy, BossTag, BossAiTag, kind),
         Sprite::from_color(color, size),
         BaseColor(color),
         Transform::from_translation(pos.extend(8.5)),
@@ -424,6 +435,7 @@ fn gromp_ai(
     time: Res<Time>,
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     player: Query<(Entity, &Transform, &Radius, &crate::player::Iframes), With<Player>>,
     mut bosses: Query<(Entity, &mut Transform, &mut Velocity, &mut Gromp), Without<Player>>,
 ) {
@@ -530,6 +542,7 @@ fn gromp_ai(
                             kind: DamageKind::Hit,
                         });
                     }
+                    sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::GrompLick));
                     let angle = dir.to_angle();
                     commands.spawn((
                         Sprite::from_color(Color::srgb(1.0, 0.5, 0.6), Vec2::new(270.0, 14.0)),
@@ -601,6 +614,7 @@ enum LimaceState {
 fn mega_limace_ai(
     time: Res<Time>,
     mut commands: Commands,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     player: Query<&Transform, With<Player>>,
     mut bosses: Query<(&Transform, &mut Velocity, &mut MegaLimace), Without<Player>>,
 ) {
@@ -676,6 +690,7 @@ fn mega_limace_ai(
                 if slug.timer.is_finished() {
                     // Ponte de 2 rejetons (petits escargots baveux, allégés
                     // pour rester au niveau des anciennes limaces invoquées).
+                    sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::PlopSlug));
                     for _ in 0..2 {
                         let off = Vec2::new(
                             rng.random_range(-45.0..45.0),
@@ -864,7 +879,8 @@ pub struct BossPlugin;
 
 impl Plugin for BossPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
+        app.add_systems(Update, apply_boss_sprite)
+        .add_systems(
             Update,
             (
                 araignee_ai,
@@ -879,3 +895,25 @@ impl Plugin for BossPlugin {
         );
     }
 }
+
+/// Greffe la texture du boss dès son apparition. `BaseColor` repasse au blanc
+/// pour que le sprite s'affiche tel quel ; les télégraphes des IA (mix vers le
+/// rouge à partir de `BaseColor`) restent lisibles par-dessus la texture.
+fn apply_boss_sprite(
+    asset_server: Res<AssetServer>,
+    mut q: Query<(&BossKind, &mut Sprite, &mut BaseColor), Added<BossKind>>,
+) {
+    for (kind, mut sprite, mut base) in &mut q {
+        sprite.image = asset_server.load(kind.sprite_path());
+        // Sprite plus grand que la hitbox pour la lisibilité ; on multiplie la
+        // taille posée au spawn (préserve la silhouette allongée de la limace).
+        if let Some(sz) = sprite.custom_size {
+            sprite.custom_size = Some(sz * BOSS_SPRITE_SCALE);
+        }
+        base.0 = Color::WHITE;
+        sprite.color = Color::WHITE;
+    }
+}
+
+/// Agrandissement visuel du sprite de boss (la hitbox `Radius` ne change pas).
+const BOSS_SPRITE_SCALE: f32 = 11.0;

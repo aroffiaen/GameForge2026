@@ -327,6 +327,7 @@ fn update_aim(
 fn movement(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    kb: Res<Keybinds>,
     stats: Res<PlayerStats>,
     augments: Res<Augments>,
     chainsaw: Res<crate::weapons::ChainsawActive>,
@@ -339,17 +340,20 @@ fn movement(
         vel.0 = dash.dir * DASH_SPEED;
         return;
     }
+    // Déplacement via les touches configurables (`Keybinds`, réglables dans le
+    // menu). Par défaut WASD/ZQSD ; les flèches restent libres pour le bac à
+    // sable de dev (édition de stats), cf. `dev::sandbox_controls`.
     let mut dir = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
+    if keys.pressed(kb.up) {
         dir.y += 1.0;
     }
-    if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
+    if keys.pressed(kb.down) {
         dir.y -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
+    if keys.pressed(kb.left) {
         dir.x -= 1.0;
     }
-    if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
+    if keys.pressed(kb.right) {
         dir.x += 1.0;
     }
     let mut max = stats.max_speed;
@@ -400,12 +404,14 @@ fn movement(
 fn dash_system(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    kb: Res<Keybinds>,
     stats: Res<PlayerStats>,
     augments: Res<Augments>,
     speed: Res<SpeedInfo>,
     aim: Res<Aim>,
     mut commands: Commands,
     mut dmg: MessageWriter<DamageMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     mut player: Query<(&mut Dash, &mut Iframes, &Velocity, &Transform), With<Player>>,
     enemies: Query<(Entity, &Transform, &Radius), With<Enemy>>,
 ) {
@@ -451,11 +457,11 @@ fn dash_system(
         }
     }
 
-    let pressed = keys.just_pressed(KeyCode::Space)
-        || keys.just_pressed(KeyCode::ShiftLeft)
-        || keys.just_pressed(KeyCode::ShiftRight);
+    // Dash via la touche configurable (`Keybinds`, défaut Espace).
+    let pressed = keys.just_pressed(kb.dash);
     if pressed && dash.charges > 0 && !dash.dashing() {
         dash.charges -= 1;
+        sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::Dash));
         let dir = if vel.0.length_squared() > 100.0 {
             vel.0.normalize()
         } else {

@@ -342,10 +342,12 @@ fn enter_cabanon(
 
 fn interact_system(
     keys: Res<ButtonInput<KeyCode>>,
+    kb: Res<Keybinds>,
     meta: Res<MetaSave>,
     mut overlay: ResMut<HubOverlay>,
     mut toasts: MessageWriter<ToastMsg>,
     mut next: ResMut<NextState<AppState>>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
     interactables: Query<(&Transform, &Interactable)>,
     player: Query<&Transform, With<Player>>,
     mut hint: Query<&mut Text, With<HintText>>,
@@ -364,27 +366,40 @@ fn interact_system(
         }
     }
 
+    // Libellés des touches configurables, pour des indications toujours exactes.
+    // (`crate::common::key_label` — le `key_label` local prend un usize/digit.)
+    let ik = crate::common::key_label(kb.interact);
     if let Ok(mut text) = hint.single_mut() {
         text.0 = match nearest {
-            Some(InteractKind::Bousier) => "E — parler au bousier (boutique)".into(),
-            Some(InteractKind::Etabli) => "E — choisir tes 2 outils".into(),
-            Some(InteractKind::PorteJardin) => "E — partir en run dans le jardin".into(),
+            Some(InteractKind::Bousier) => format!("{ik} — parler au bousier (boutique)"),
+            Some(InteractKind::Etabli) => format!("{ik} — choisir tes 2 outils"),
+            Some(InteractKind::PorteJardin) => format!("{ik} — partir en run dans le jardin"),
             Some(InteractKind::PorteTerrasse) => {
                 if meta.terrasse_unlocked {
-                    "E — défier la Terrasse (survie)".into()
+                    format!("{ik} — défier la Terrasse (survie)")
                 } else {
                     "Atteins-la d'abord par une run…".into()
                 }
             }
-            None => "ZQSD/WASD bouger · Espace dash · E interagir · Clic = armes".into(),
+            None => format!(
+                "{}{}{}{} bouger · {} dash · {ik} interagir · Clic = armes",
+                crate::common::key_label(kb.up),
+                crate::common::key_label(kb.left),
+                crate::common::key_label(kb.down),
+                crate::common::key_label(kb.right),
+                crate::common::key_label(kb.dash),
+            ),
         };
     }
 
-    if !keys.just_pressed(KeyCode::KeyE) {
+    if !keys.just_pressed(kb.interact) {
         return;
     }
     match nearest {
-        Some(InteractKind::Bousier) => *overlay = HubOverlay::Shop,
+        Some(InteractKind::Bousier) => {
+            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::BousierTalk));
+            *overlay = HubOverlay::Shop;
+        }
         Some(InteractKind::Etabli) => *overlay = HubOverlay::Loadout,
         Some(InteractKind::PorteJardin) => next.set(AppState::EnRun),
         Some(InteractKind::PorteTerrasse) => {
@@ -603,6 +618,7 @@ fn overlay_input(
     mut meta: ResMut<MetaSave>,
     mut loadout: ResMut<Loadout>,
     mut toasts: MessageWriter<ToastMsg>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
 ) {
     if *overlay == HubOverlay::None {
         return;
@@ -631,6 +647,7 @@ fn overlay_input(
                 return;
             }
             meta.pattes -= item.price;
+            sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::WeaponBought));
             match item.action {
                 ShopAction::BuyTool(w) => {
                     meta.claimable.retain(|x| *x != w);

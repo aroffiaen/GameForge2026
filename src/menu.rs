@@ -205,11 +205,13 @@ fn menu_buttons(
     kb: Res<Keybinds>,
     mut next: ResMut<NextState<AppState>>,
     mut exit: MessageWriter<AppExit>,
+    mut sfx: MessageWriter<crate::audio::PlaySfx>,
 ) {
     for (interaction, button) in &interactions {
         if *interaction != Interaction::Pressed {
             continue;
         }
+        sfx.write(crate::audio::PlaySfx(crate::audio::Sfx::Click));
         match *button {
             MenuButton::Play => next.set(AppState::Cabanon),
             MenuButton::Quit => {

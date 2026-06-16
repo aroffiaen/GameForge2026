@@ -9,6 +9,7 @@ mod biomes;
 mod boss;
 mod cabanon;
 mod common;
+mod dev;
 mod enemies;
 mod healthbar;
 mod menu;
@@ -106,6 +107,7 @@ fn main() {
             cabanon::CabanonPlugin,
             terrasse::TerrassePlugin,
             ui::UiPlugin,
+            dev::DevPlugin,
         ))
         .add_systems(Startup, (setup_camera, override_default_font));
 

@@ -55,6 +55,9 @@ pub struct RunState {
     /// Temps cible et temps écoulé (s) de la salle chronométrée courante.
     pub chrono_target: f32,
     pub chrono_elapsed: f32,
+    /// Salle bac à sable (dev) : arène vide, pas de chrono ni de portes, le
+    /// joueur fait spawner ce qu'il veut au clavier (cf. `dev.rs`).
+    pub sandbox: bool,
 }
 
 impl Default for RunState {
@@ -75,6 +78,7 @@ impl Default for RunState {
             chrono_active: false,
             chrono_target: 0.0,
             chrono_elapsed: 0.0,
+            sandbox: false,
         }
     }
 }
@@ -145,6 +149,7 @@ fn start_run(
     mut meta: ResMut<MetaSave>,
     mut arena: ResMut<Arena>,
     mut build: MessageWriter<BuildRoom>,
+    mut pending_sandbox: ResMut<crate::dev::PendingSandbox>,
 ) {
     *stats = RunStats::default();
     statup.reset(); // chaque run repart à 100 % sur les 7 stats (GDD §3.3)
@@ -165,6 +170,9 @@ fn start_run(
         came_from_run: false,
         ..default()
     };
+    // Bac à sable (dev) demandé depuis le menu/cabanon via F3 (cf. `dev.rs`).
+    run.sandbox = pending_sandbox.0;
+    pending_sandbox.0 = false;
     arena.half = Vec2::new(550.0, 310.0);
 
     let stats_now = PlayerStats::compute(&meta, &Augments::default(), &statup);
@@ -292,6 +300,15 @@ fn build_room(
         tf.translation.x = 0.0;
         tf.translation.y = -arena.half.y + 70.0;
         vel.0 = Vec2::ZERO;
+    }
+
+    // Bac à sable : arène vide, pas de chrono ni de contenu auto — c'est le
+    // joueur qui fait spawner les mobs/boss au clavier (cf. `dev.rs`).
+    if run.sandbox {
+        run.chrono_active = false;
+        toasts.write(ToastMsg("BAC À SABLE — voir le panneau d'aide (dev)".into()));
+        next_phase.set(RunPhase::Fighting);
+        return;
     }
 
     // Contenu selon le type de salle.
@@ -478,6 +495,10 @@ fn check_room_clear(
     if *state.get() != AppState::EnRun || *phase.get() != RunPhase::Fighting {
         return;
     }
+    // En bac à sable, une arène vide ne déclenche jamais portes/augments.
+    if run.sandbox {
+        return;
+    }
     if !enemies.is_empty() {
         return;
     }
@@ -518,6 +539,7 @@ fn check_room_clear(
 fn spawn_door(
     state: Res<State<AppState>>,
     arena: Res<Arena>,
+    kb: Res<Keybinds>,
     mut run: ResMut<RunState>,
     mut commands: Commands,
     doors: Query<(), With<Door>>,
@@ -525,14 +547,15 @@ fn spawn_door(
     if *state.get() != AppState::EnRun || !doors.is_empty() {
         return;
     }
+    let ik = key_label(kb.interact);
     if run.awaiting_biome {
         // Portes-stat post-boss : elles mènent au biome suivant (pas d'élite ici).
         run.next_room_kind = RoomKind::Combat;
-        spawn_stat_doors(&mut commands, &arena, false);
+        spawn_stat_doors(&mut commands, &arena, false, ik);
     } else if run.room_index + 1 >= run.rooms_in_biome {
         // Juste avant le boss : porte simple (pas de mise).
         run.next_room_kind = RoomKind::Boss;
-        spawn_door_inner(&mut commands, &arena);
+        spawn_door_inner(&mut commands, &arena, ik);
     } else {
         // On pré-décide le type de la prochaine salle pour pouvoir la signaler :
         // une élite est annoncée par un losange violet au-dessus des portes.
@@ -543,7 +566,7 @@ fn spawn_door(
             RoomKind::Combat
         };
         let elite = run.next_room_kind == RoomKind::Elite;
-        spawn_stat_doors(&mut commands, &arena, elite);
+        spawn_stat_doors(&mut commands, &arena, elite, ik);
     }
 }
 
@@ -551,7 +574,7 @@ fn spawn_door(
 /// porte. Passer par une porte = miser cette stat (la salle d'après est chrono).
 /// Si la salle au-delà est une **élite**, chaque porte est coiffée d'un
 /// **losange violet** (GDD §6).
-fn spawn_stat_doors(commands: &mut Commands, arena: &Arena, elite: bool) {
+fn spawn_stat_doors(commands: &mut Commands, arena: &Arena, elite: bool, ik: &str) {
     let mut rng = rand::rng();
     let mut pool = Stat::ALL.to_vec();
     pool.shuffle(&mut rng);
@@ -573,7 +596,7 @@ fn spawn_stat_doors(commands: &mut Commands, arena: &Arena, elite: bool) {
                     Transform::from_xyz(0.0, 16.0, 1.0),
                 ));
                 p.spawn((
-                    Text2d::new("miser (E / 1-2-3)"),
+                    Text2d::new(format!("miser ({ik} / 1-2-3)")),
                     TextFont { font_size: 11.0, ..default() },
                     TextColor(Color::srgb(0.9, 0.85, 0.6)),
                     Transform::from_xyz(0.0, -20.0, 1.0),
@@ -590,7 +613,7 @@ fn spawn_stat_doors(commands: &mut Commands, arena: &Arena, elite: bool) {
     }
 }
 
-fn spawn_door_inner(commands: &mut Commands, arena: &Arena) {
+fn spawn_door_inner(commands: &mut Commands, arena: &Arena, ik: &str) {
     commands
         .spawn((
             RoomEntity,
@@ -600,7 +623,7 @@ fn spawn_door_inner(commands: &mut Commands, arena: &Arena) {
         ))
         .with_children(|p| {
             p.spawn((
-                Text2d::new("E — salle suivante"),
+                Text2d::new(format!("{ik} — salle suivante")),
                 TextFont { font_size: 14.0, ..default() },
                 TextColor(Color::srgb(1.0, 0.95, 0.7)),
                 Transform::from_xyz(0.0, -22.0, 1.0),
@@ -610,6 +633,7 @@ fn spawn_door_inner(commands: &mut Commands, arena: &Arena) {
 
 fn door_interact(
     keys: Res<ButtonInput<KeyCode>>,
+    kb: Res<Keybinds>,
     mut run: ResMut<RunState>,
     mut build: MessageWriter<BuildRoom>,
     doors: Query<(&Transform, Option<&DoorChoice>), With<Door>>,
@@ -644,8 +668,8 @@ fn door_interact(
         }
     }
 
-    // Sinon, E valide la porte la plus proche du joueur.
-    if chosen.is_none() && keys.just_pressed(KeyCode::KeyE) {
+    // Sinon, la touche « interagir » valide la porte la plus proche du joueur.
+    if chosen.is_none() && keys.just_pressed(kb.interact) {
         let mut best: Option<(f32, Option<Stat>)> = None;
         for (tf, dc) in &doors {
             let d = tf.translation.truncate().distance(ppos);
