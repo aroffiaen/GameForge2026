@@ -1,6 +1,4 @@
-# GameForge2026
-
-> *Nom de travail — à renommer plus tard.*
+# LittleFastGardener
 
 Un **roguelike d'action top-down** sur le thème de la **vitesse**, où l'on incarne un
 jardinier mystérieusement rétréci dans son propre jardin, qui doit survivre salle après
@@ -11,13 +9,9 @@ salle pour regagner sa terrasse.
 ## 🌱 Le pitch
 
 Vous êtes un **jardinier rétréci**. Coincé au ras du sol dans votre jardin devenu une jungle
-géante, vous vous frayez un chemin à travers une succession de salles (la *« tower »*),
+géante, vous vous frayez un chemin à travers une succession de salles,
 infestées d'ennemis de toutes tailles et de tous types, pour remonter jusqu'à votre
 **terrasse** — votre supposée zone de sécurité.
-
-> ⚠️ **Plot twist :** la terrasse n'est pas un refuge. C'est l'épreuve finale — un **mode
-> chronométré** où des ennemis affluent en continu, de plus en plus forts. Objectif : tenir
-> le plus longtemps possible.
 
 ## ⚡ Le hook : la vitesse, c'est la **progression**
 
