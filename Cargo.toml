@@ -10,5 +10,6 @@ opt-level = 1
 opt-level = 3
 
 [dependencies]
-bevy = "0.18.1"
+bevy = "0.18"
+bevy_egui = "0.39"
 rand = "0.10.1"
